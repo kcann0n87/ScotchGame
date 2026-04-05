@@ -74,6 +74,26 @@ const COURSE_PRESETS = [
     name: 'Mizner CC',
     pars: [4,4,5,4,3,4,5,4,3, 4,4,4,3,4,5,5,3,5],
     si:   [7,1,11,15,9,3,5,17,13, 16,2,4,18,8,14,10,6,12]
+  },
+  {
+    name: 'Boca Grove',
+    pars: [4,5,3,4,4,4,5,3,4, 4,4,5,3,4,3,4,5,4],
+    si:   [11,5,17,1,9,15,7,13,3, 10,8,4,16,2,18,14,6,12]
+  },
+  {
+    name: 'Delaire CC — Lakes/Hills',
+    pars: [4,4,3,5,4,4,3,5,4, 4,5,4,3,4,4,5,3,4],
+    si:   [11,3,15,5,1,9,17,7,13, 4,2,10,18,8,14,6,16,12]
+  },
+  {
+    name: 'Delaire CC — Hills/Woods',
+    pars: [4,5,4,3,4,4,5,3,4, 4,4,5,3,4,4,3,5,4],
+    si:   [5,1,9,17,7,13,3,15,11, 4,10,2,18,14,8,16,6,12]
+  },
+  {
+    name: 'Delaire CC — Woods/Lakes',
+    pars: [4,4,5,3,4,4,3,5,4, 4,4,3,5,4,4,3,5,4],
+    si:   [7,9,1,17,5,13,15,3,11, 10,4,16,6,2,12,18,8,14]
   }
 ];
 
@@ -147,6 +167,9 @@ function h(tag, attrs, ...children) {
 
 function render() {
   root.innerHTML = '';
+  root.classList.remove('screen-fade');
+  void root.offsetWidth;
+  root.classList.add('screen-fade');
   save();
   if (state.screen === 'home') return renderHome();
   if (state.screen === 'newRound') return renderNewRound();
@@ -161,7 +184,7 @@ function renderHome() {
   const header = h('div', { class: 'header' },
     h('div', { class: 'header-row' },
       h('div', null,
-        h('h1', null, 'SCOTCH'),
+        h('h1', null, "LLOYD'S GAME"),
         h('div', { class: 'sub' }, 'Golf gambling tracker')
       )
     )
@@ -169,16 +192,16 @@ function renderHome() {
   root.appendChild(header);
 
   const hero = h('div', { class: 'card' },
-    h('div', { style: 'text-align:center;padding:12px 0;' },
-      h('div', { style: 'font-size:56px;' }, '⛳'),
-      h('h2', { style: 'text-align:center;' }, state.round ? 'Round in progress' : 'Ready to play'),
+    h('div', { style: 'text-align:center;padding:var(--space-lg) 0;' },
+      h('div', { class: 'hero-icon' }, '⛳'),
+      h('div', { class: 'hero-title' }, state.round ? 'Round in progress' : 'Ready to play'),
       state.round
-        ? h('div', { style: 'color:var(--muted);margin-bottom:12px;' }, `${state.round.course.name}`)
+        ? h('div', { class: 'hero-subtitle' }, `${state.round.course.name}`)
         : null,
       state.round
         ? h('div', null,
             h('button', { class: 'btn', onclick: () => { state.screen = 'round'; render(); } }, 'Resume Round'),
-            h('button', { class: 'btn secondary', style: 'margin-top:8px;', onclick: () => {
+            h('button', { class: 'btn secondary', style: 'margin-top:var(--space-sm);', onclick: () => {
               if (confirm('Discard current round?')) { state.round = null; state.currentHoleIdx = 0; render(); }
             }}, 'New Round')
           )
@@ -195,23 +218,30 @@ function renderHome() {
   root.appendChild(menu);
 
   const rules = h('div', { class: 'card' },
-    h('h2', null, 'Rules reference'),
-    h('div', { style: 'font-size:13px;line-height:1.6;color:var(--muted);' },
-      h('strong', { style: 'color:var(--text);' }, 'Points Game: '), 'Low 3 • Total 3 • CTP 2 • Birdie 4 • Keep 1 • Take 2 (doubles) • Pullie 1',
-      h('br'), h('br'),
-      h('strong', { style: 'color:var(--text);' }, 'Sweep: '), 'Low+Total+CTP+Birdie → birdie becomes 1, total doubles',
-      h('br'), h('br'),
-      h('strong', { style: 'color:var(--text);' }, 'Roll: '), 'Trailing team can press hole to 2x. Leader can re-roll to 3x. Points game only. Stacks on sweep.',
-      h('br'), h('br'),
-      h('strong', { style: 'color:var(--text);' }, 'Top Game: '), 'Low + Total, auto-press at 4-down',
-      h('br'),
-      h('strong', { style: 'color:var(--text);' }, 'Bottom Game: '), 'Net Nassau, auto-press at 2-down, auto back 9 press',
-      h('br'),
-      h('strong', { style: 'color:var(--text);' }, 'Presses: '), 'Run until end of current nine',
-      h('br'),
-      h('strong', { style: 'color:var(--text);' }, 'Stakes: '), 'Per-player full ($100) or half ($50). Mixed pairs settle at lower stake.',
-      h('br'), h('br'),
-      h('strong', { style: 'color:var(--text);' }, 'Individual: '), 'Each pair also plays a net Nassau (front/back/total) at flat stake per segment.'
+    h('h2', null, 'Rules Reference'),
+    h('div', { class: 'rules-panel' },
+      h('div', { class: 'rule-group' },
+        h('strong', null, 'Points Game: '), 'Low 3 • Total 3 • CTP 2 • Birdie 4 • Keep 1 • Take 2 (doubles) • Pullie 1'
+      ),
+      h('div', { class: 'rule-group' },
+        h('strong', null, 'Sweep: '), 'Low+Total+CTP+Birdie → birdie becomes 1, total doubles'
+      ),
+      h('div', { class: 'rule-group' },
+        h('strong', null, 'Roll: '), 'Trailing team can press hole to 2x. Leader can re-roll to 3x. Points game only. Stacks on sweep.'
+      ),
+      h('div', { class: 'rule-group' },
+        h('strong', null, 'Top Game: '), 'Low + Total, auto-press at 4-down',
+        h('br'),
+        h('strong', null, 'Bottom Game: '), 'Net Nassau, auto-press at 2-down, auto back 9 press',
+        h('br'),
+        h('strong', null, 'Presses: '), 'Run until end of current nine'
+      ),
+      h('div', { class: 'rule-group' },
+        h('strong', null, 'Stakes: '), 'Per-player full ($100) or half ($50). Mixed pairs settle at lower stake.'
+      ),
+      h('div', { class: 'rule-group' },
+        h('strong', null, 'Individual: '), 'Each pair also plays a net Nassau (front/back/total) at flat stake per segment.'
+      )
     )
   );
   root.appendChild(rules);
@@ -464,21 +494,21 @@ function renderNewRound() {
               oninput: e => { p.name = e.target.value; } })
           ),
           h('div', { class: 'field-row' },
-            h('div', { class: 'field', style: 'flex:1;' },
+            h('div', { class: 'field', style: 'flex:0 0 70px;' },
               h('label', null, 'Handicap'),
               h('input', { type: 'number', value: p.handicap, min: 0, max: 54,
                 oninput: e => { p.handicap = parseInt(e.target.value) || 0; } })
             ),
-            h('div', { class: 'field', style: 'flex:1;' },
+            h('div', { class: 'field', style: 'flex:1;min-width:0;' },
               h('label', null, 'Team'),
-              h('select', { onchange: e => { p.team = e.target.value; render(); } },
+              h('select', { style: 'width:100%;', onchange: e => { p.team = e.target.value; render(); } },
                 h('option', { value: 'A', ...(p.team === 'A' ? { selected: 'selected' } : {}) }, 'Team A'),
                 h('option', { value: 'B', ...(p.team === 'B' ? { selected: 'selected' } : {}) }, 'Team B')
               )
             ),
-            h('div', { class: 'field', style: 'flex:1.2;' },
+            h('div', { class: 'field', style: 'flex:1.3;min-width:0;' },
               h('label', null, 'Stake'),
-              h('select', { onchange: e => { p.stake = e.target.value; } },
+              h('select', { style: 'width:100%;', onchange: e => { p.stake = e.target.value; } },
                 h('option', { value: 'full', ...(p.stake === 'full' ? { selected: 'selected' } : {}) }, 'Full ($100)'),
                 h('option', { value: 'half', ...(p.stake === 'half' ? { selected: 'selected' } : {}) }, 'Half ($50)')
               )
