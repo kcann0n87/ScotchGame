@@ -683,11 +683,39 @@ function renderNewRound() {
       is5
         ? '3-man team has a swing player in both games. Action splits by stake shares (full=2, half=1).'
         : 'Each player picks full or half stake. Mixed pairings settle at the lower stake.'),
-    ...newRoundDraft.players.map((p, i) =>
-      h('div', { class: `player-card team-${p.team.toLowerCase()}` },
-        h('div', { class: 'info' },
-          h('div', { class: 'field' },
-            h('label', null, `Player ${i+1} Name${p.swing ? ' • SWING' : ''}`),
+    ...(() => {
+      // Compute Game 1 / Game 2 assignment for 5-man mode.
+      // The 3-man team's non-swing players (in order) become Game 1 and Game 2 partners.
+      // The swing player plays in BOTH games.
+      const gameLabel = {};
+      if (is5) {
+        const teamA = newRoundDraft.players.filter(p => p.team === 'A');
+        const teamB = newRoundDraft.players.filter(p => p.team === 'B');
+        const bigTeam  = teamA.length === 3 ? teamA : (teamB.length === 3 ? teamB : null);
+        if (bigTeam) {
+          const swing = bigTeam.find(p => p.swing);
+          const nonSwings = bigTeam.filter(p => !p.swing);
+          if (nonSwings[0]) gameLabel[nonSwings[0].id] = 'G1';
+          if (nonSwings[1]) gameLabel[nonSwings[1].id] = 'G2';
+          if (swing) gameLabel[swing.id] = 'BOTH';
+          // 2-man team plays both
+          const smallTeam = bigTeam === teamA ? teamB : teamA;
+          for (const p of smallTeam) gameLabel[p.id] = 'BOTH';
+        }
+      }
+      return newRoundDraft.players.map((p, i) => {
+        const tag = gameLabel[p.id];
+        const badge = tag === 'G1'
+          ? h('span', { class: 'game-badge g1' }, 'Game 1')
+          : tag === 'G2'
+            ? h('span', { class: 'game-badge g2' }, 'Game 2')
+            : tag === 'BOTH'
+              ? h('span', { class: 'game-badge both' }, 'Both Games')
+              : null;
+        return h('div', { class: `player-card team-${p.team.toLowerCase()}` },
+          h('div', { class: 'info' },
+            h('div', { class: 'field' },
+              h('label', null, `Player ${i+1} Name${p.swing ? ' • SWING' : ''}`, badge ? ' ' : '', badge),
             h('input', { type: 'text', value: p.name || '', placeholder: `Player ${i+1}`,
               oninput: e => { p.name = e.target.value; } })
           ),
@@ -768,8 +796,9 @@ function renderNewRound() {
               )
             : null
         )
-      )
-    )
+      );
+      });
+    })()
   );
   root.appendChild(playersCard);
 

@@ -632,6 +632,22 @@ input[type="number"]::-webkit-outer-spin-button {
   opacity: 0.6;
 }
 
+/* ====== GAME BADGES (5-man player assignment) ====== */
+.game-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+.game-badge.g1 { background: var(--green-soft); color: var(--green-dark); border: 1px solid var(--green-light); }
+.game-badge.g2 { background: var(--gold-soft); color: var(--gold-dark); border: 1px solid var(--gold-light); }
+.game-badge.both { background: var(--bg-warm); color: var(--text-secondary); border: 1px solid var(--border); }
+
 /* ====== TAGS ====== */
 .tag {
   display: inline-block;
