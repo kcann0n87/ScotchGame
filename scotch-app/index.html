@@ -2350,10 +2350,10 @@ function ensureDraft() {
       gameType1: 'scotch',  // 5-man: game 1 type
       gameType2: 'scotch',  // 5-man: game 2 type
       players: [
-        { id: uid(), name: 'Player 1', handicap: 10, team: 'A', stake: 'full', swing: false, tees: '' },
-        { id: uid(), name: 'Player 2', handicap: 12, team: 'B', stake: 'full', swing: false, tees: '' },
-        { id: uid(), name: 'Player 3', handicap: 8,  team: 'A', stake: 'full', swing: false, tees: '' },
-        { id: uid(), name: 'Player 4', handicap: 15, team: 'B', stake: 'full', swing: false, tees: '' },
+        { id: uid(), name: '', handicap: '', team: 'A', stake: 'full', swing: false, tees: '' },
+        { id: uid(), name: '', handicap: '', team: 'B', stake: 'full', swing: false, tees: '' },
+        { id: uid(), name: '', handicap: '', team: 'A', stake: 'full', swing: false, tees: '' },
+        { id: uid(), name: '', handicap: '', team: 'B', stake: 'full', swing: false, tees: '' },
       ]
     };
   }
@@ -2399,7 +2399,7 @@ function renderNewRound() {
         onclick: () => {
           newRoundDraft.mode = '5man';
           if (newRoundDraft.players.length < 5) {
-            newRoundDraft.players.push({ id: uid(), name: 'Player 5', handicap: 10, team: 'A', stake: 'full', swing: true });
+            newRoundDraft.players.push({ id: uid(), name: '', handicap: '', team: 'A', stake: 'full', swing: true, tees: '' });
           }
           render();
         }
@@ -2491,14 +2491,18 @@ function renderNewRound() {
         h('div', { class: 'info' },
           h('div', { class: 'field' },
             h('label', null, `Player ${i+1} Name${p.swing ? ' • SWING' : ''}`),
-            h('input', { type: 'text', value: p.name, placeholder: 'Name',
+            h('input', { type: 'text', value: p.name || '', placeholder: `Player ${i+1}`,
               oninput: e => { p.name = e.target.value; } })
           ),
           h('div', { class: 'field-row' },
             h('div', { class: 'field', style: 'flex:0 0 70px;' },
               h('label', null, 'Handicap'),
-              h('input', { type: 'number', value: p.handicap, min: 0, max: 54,
-                oninput: e => { p.handicap = parseInt(e.target.value) || 0; } })
+              h('input', { type: 'number', value: p.handicap === '' || p.handicap == null ? '' : p.handicap,
+                min: 0, max: 54, placeholder: '0',
+                oninput: e => {
+                  const v = e.target.value;
+                  p.handicap = v === '' ? '' : (parseInt(v) || 0);
+                } })
             ),
             h('div', { class: 'field', style: 'flex:1;min-width:0;' },
               h('label', null, 'Team'),
@@ -2590,6 +2594,11 @@ function renderNewRound() {
         const bigTeam = teamA.length === 3 ? newRoundDraft.players.filter(p=>p.team==='A') : newRoundDraft.players.filter(p=>p.team==='B');
         if (!bigTeam.some(p => p.swing)) { alert('Designate a swing player on the 3-man team'); return; }
       }
+      // Coerce empty handicaps to 0 and empty names to "Player N"
+      newRoundDraft.players.forEach((p, i) => {
+        if (p.handicap === '' || p.handicap == null) p.handicap = 0;
+        if (!p.name || !p.name.trim()) p.name = `Player ${i+1}`;
+      });
       state.round = newRound(
         course,
         newRoundDraft.players,
