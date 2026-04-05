@@ -166,7 +166,7 @@ function courseFromPreset(preset) {
 }
 
 // ---------- Round factory ----------
-function newRound(course, players, teamAIds, teamBIds, mode, playhouse, startNine) {
+function newRound(course, players, teamAIds, teamBIds, mode, playhouse, startNine, gameType, gameType1, gameType2) {
   const pars = course.holes.map(h => h.par);
   const sn = startNine === 'back' ? 'back' : 'front';
   // Clone the course so we can apply startNine swap without mutating the master course
@@ -201,6 +201,9 @@ function newRound(course, players, teamAIds, teamBIds, mode, playhouse, startNin
     mode: mode || '4man',
     playhouse: !!playhouse,
     startNine: sn,
+    gameType: gameType || 'scotch',
+    gameType1: gameType1 || gameType || 'scotch',
+    gameType2: gameType2 || gameType || 'scotch',
     course: courseForRound,
     teamA,
     teamB,
@@ -293,13 +296,17 @@ function renderHome() {
     h('h2', null, 'Rules Reference'),
     h('div', { class: 'rules-panel' },
       h('div', { class: 'rule-group' },
-        h('strong', null, 'Points Game: '), 'Low 3 • Total 3 • CTP 2 • Birdie 4 • Keep 1 • Take 2 (doubles) • Pullie 1'
+        h('strong', null, 'Scotch: '), 'Low 3 • Total 3 • CTP 2 • Birdie 4 • Keep 1 • Take 2 • Pullie 1',
+        h('br'),
+        h('strong', null, 'Blitz: '), 'Low+Total+CTP+Birdie → birdie becomes 1, total doubles'
       ),
       h('div', { class: 'rule-group' },
-        h('strong', null, 'Sweep: '), 'Low+Total+CTP+Birdie → birdie becomes 1, total doubles'
+        h('strong', null, '9-Point: '), 'Low 3 • Total 3 • High Ball 3 • Keep 1 • Take 2',
+        h('br'),
+        h('strong', null, 'Blitz: '), 'Low+Total+High Ball → total doubles'
       ),
       h('div', { class: 'rule-group' },
-        h('strong', null, 'Roll: '), 'Trailing team can press hole to 2x. Leader can re-roll to 3x. Points game only. Stacks on sweep.'
+        h('strong', null, 'Roll: '), 'Trailing team can press hole to 2x. Leader can re-roll to 3x. Middle game only. Stacks on blitz.'
       ),
       h('div', { class: 'rule-group' },
         h('strong', null, 'Top Game: '), 'Low + Total, auto-press at 4-down',
@@ -536,6 +543,9 @@ function ensureDraft() {
       mode: '4man',
       playhouse: false,
       startNine: 'front',
+      gameType: 'scotch',   // 4-man type
+      gameType1: 'scotch',  // 5-man: game 1 type
+      gameType2: 'scotch',  // 5-man: game 2 type
       players: [
         { id: uid(), name: 'Player 1', handicap: 10, team: 'A', stake: 'full', swing: false, tees: '' },
         { id: uid(), name: 'Player 2', handicap: 12, team: 'B', stake: 'full', swing: false, tees: '' },
@@ -577,7 +587,6 @@ function renderNewRound() {
       h('div', { class: `toggle ${newRoundDraft.mode === '4man' ? 'active' : ''}`,
         onclick: () => {
           newRoundDraft.mode = '4man';
-          // Trim to 4 players
           if (newRoundDraft.players.length > 4) newRoundDraft.players = newRoundDraft.players.slice(0, 4);
           newRoundDraft.players.forEach(p => p.swing = false);
           render();
@@ -592,7 +601,45 @@ function renderNewRound() {
           render();
         }
       }, '5-Man', h('br'), h('span', { style: 'font-size:11px;' }, '3 vs 2 with swing'))
-    )
+    ),
+    // Game type selector (the middle-game rule set)
+    h('h3', { style: 'margin-top:14px;' },
+      newRoundDraft.mode === '5man' ? 'Middle Game Type (per game)' : 'Middle Game Type'),
+    newRoundDraft.mode === '5man'
+      ? h('div', null,
+          h('div', { style: 'font-size:11px;color:var(--muted);margin-bottom:6px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;' }, 'Game 1'),
+          h('div', { class: 'toggle-group', style: 'margin-bottom:10px;' },
+            h('div', {
+              class: `toggle ${newRoundDraft.gameType1 === 'scotch' ? 'active' : ''}`,
+              onclick: () => { newRoundDraft.gameType1 = 'scotch'; render(); }
+            }, 'Scotch', h('br'), h('span', { style: 'font-size:10px;' }, 'Low/Total/CTP/Bd')),
+            h('div', {
+              class: `toggle ${newRoundDraft.gameType1 === '9point' ? 'active' : ''}`,
+              onclick: () => { newRoundDraft.gameType1 = '9point'; render(); }
+            }, '9-Point', h('br'), h('span', { style: 'font-size:10px;' }, 'Low/Total/High'))
+          ),
+          h('div', { style: 'font-size:11px;color:var(--muted);margin-bottom:6px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;' }, 'Game 2'),
+          h('div', { class: 'toggle-group' },
+            h('div', {
+              class: `toggle ${newRoundDraft.gameType2 === 'scotch' ? 'active' : ''}`,
+              onclick: () => { newRoundDraft.gameType2 = 'scotch'; render(); }
+            }, 'Scotch', h('br'), h('span', { style: 'font-size:10px;' }, 'Low/Total/CTP/Bd')),
+            h('div', {
+              class: `toggle ${newRoundDraft.gameType2 === '9point' ? 'active' : ''}`,
+              onclick: () => { newRoundDraft.gameType2 = '9point'; render(); }
+            }, '9-Point', h('br'), h('span', { style: 'font-size:10px;' }, 'Low/Total/High'))
+          )
+        )
+      : h('div', { class: 'toggle-group' },
+          h('div', {
+            class: `toggle ${newRoundDraft.gameType === 'scotch' ? 'active' : ''}`,
+            onclick: () => { newRoundDraft.gameType = 'scotch'; render(); }
+          }, 'Scotch', h('br'), h('span', { style: 'font-size:10px;' }, 'Low/Total/CTP/Bd/Keep/Take')),
+          h('div', {
+            class: `toggle ${newRoundDraft.gameType === '9point' ? 'active' : ''}`,
+            onclick: () => { newRoundDraft.gameType = '9point'; render(); }
+          }, '9-Point', h('br'), h('span', { style: 'font-size:10px;' }, 'Low/Total/High/Keep/Take'))
+        )
   );
   root.appendChild(modeCard);
 
@@ -740,7 +787,17 @@ function renderNewRound() {
         const bigTeam = teamA.length === 3 ? newRoundDraft.players.filter(p=>p.team==='A') : newRoundDraft.players.filter(p=>p.team==='B');
         if (!bigTeam.some(p => p.swing)) { alert('Designate a swing player on the 3-man team'); return; }
       }
-      state.round = newRound(course, newRoundDraft.players, teamA, teamB, mode, newRoundDraft.playhouse, newRoundDraft.startNine);
+      state.round = newRound(
+        course,
+        newRoundDraft.players,
+        teamA, teamB,
+        mode,
+        newRoundDraft.playhouse,
+        newRoundDraft.startNine,
+        newRoundDraft.gameType,
+        newRoundDraft.gameType1,
+        newRoundDraft.gameType2
+      );
       state.currentHoleIdx = newRoundDraft.startNine === 'back' ? 9 : 0;
       state.screen = 'round';
       newRoundDraft = null;
@@ -858,43 +915,60 @@ function renderRound() {
   root.appendChild(scoreCard);
 
   // CTP / Pullie / Roll — one section in 4-man, two in 5-man
+  // In 9-point mode, CTP & Pullie are hidden (only Roll shown)
   const is5man = r.mode === '5man';
   const games = is5man
-    ? [{ label: 'Game 1', ctpKey: 'ctp', pullieKey: 'pullie', rollKey: 'roll' },
-       { label: 'Game 2', ctpKey: 'ctp2', pullieKey: 'pullie2', rollKey: 'roll2' }]
-    : [{ label: null, ctpKey: 'ctp', pullieKey: 'pullie', rollKey: 'roll' }];
+    ? [{ label: 'Game 1', ctpKey: 'ctp',  pullieKey: 'pullie',  rollKey: 'roll',  gameType: r.gameType1 || 'scotch' },
+       { label: 'Game 2', ctpKey: 'ctp2', pullieKey: 'pullie2', rollKey: 'roll2', gameType: r.gameType2 || 'scotch' }]
+    : [{ label: null, ctpKey: 'ctp', pullieKey: 'pullie', rollKey: 'roll', gameType: r.gameType || 'scotch' }];
 
   for (const g of games) {
     const ck = g.ctpKey, pk = g.pullieKey, rk = g.rollKey;
-    const ctpCard = h('div', { class: 'card' },
-      h('h2', null, g.label ? `${g.label} — Closest to the Pin` : 'Closest to the Pin'),
-      h('div', { class: 'toggle-group' },
-        h('div', { class: `toggle team-a ${holeData[ck] === 'A' ? 'active' : ''}`,
-          onclick: () => { holeData[ck] = holeData[ck] === 'A' ? null : 'A'; render(); }
-        }, 'Team A'),
-        h('div', { class: `toggle team-b ${holeData[ck] === 'B' ? 'active' : ''}`,
-          onclick: () => { holeData[ck] = holeData[ck] === 'B' ? null : 'B'; render(); }
-        }, 'Team B'),
-        h('div', { class: `toggle ${holeData[ck] === 'NONE' ? 'active' : ''}`,
-          onclick: () => { holeData[ck] = holeData[ck] === 'NONE' ? null : 'NONE'; render(); }
-        }, 'None')
-      ),
-      (holeData[ck] === 'NONE' || holeData[ck] === null)
-        ? h('div', null,
-            h('h3', null, 'Pullie (no one hit green in reg)'),
-            h('div', { class: 'toggle-group' },
-              h('div', { class: `toggle team-a ${holeData[pk] === 'A' ? 'active' : ''}`,
-                onclick: () => { holeData[pk] = holeData[pk] === 'A' ? null : 'A'; render(); }
-              }, 'Team A'),
-              h('div', { class: `toggle team-b ${holeData[pk] === 'B' ? 'active' : ''}`,
-                onclick: () => { holeData[pk] = holeData[pk] === 'B' ? null : 'B'; render(); }
-              }, 'Team B'),
-              h('div', { class: `toggle ${holeData[pk] == null ? 'active' : ''}`,
-                onclick: () => { holeData[pk] = null; render(); }
-              }, 'None')
+    const isScotch = g.gameType !== '9point';
+    const headerLabel = g.label
+      ? `${g.label} — ${isScotch ? 'Closest to the Pin' : '9-Point Game'}`
+      : (isScotch ? 'Closest to the Pin' : '9-Point Game');
+
+    const cardChildren = [h('h2', null, headerLabel)];
+
+    if (isScotch) {
+      cardChildren.push(
+        h('div', { class: 'toggle-group' },
+          h('div', { class: `toggle team-a ${holeData[ck] === 'A' ? 'active' : ''}`,
+            onclick: () => { holeData[ck] = holeData[ck] === 'A' ? null : 'A'; render(); }
+          }, 'Team A'),
+          h('div', { class: `toggle team-b ${holeData[ck] === 'B' ? 'active' : ''}`,
+            onclick: () => { holeData[ck] = holeData[ck] === 'B' ? null : 'B'; render(); }
+          }, 'Team B'),
+          h('div', { class: `toggle ${holeData[ck] === 'NONE' ? 'active' : ''}`,
+            onclick: () => { holeData[ck] = holeData[ck] === 'NONE' ? null : 'NONE'; render(); }
+          }, 'None')
+        ),
+        (holeData[ck] === 'NONE' || holeData[ck] === null)
+          ? h('div', null,
+              h('h3', null, 'Pullie (no one hit green in reg)'),
+              h('div', { class: 'toggle-group' },
+                h('div', { class: `toggle team-a ${holeData[pk] === 'A' ? 'active' : ''}`,
+                  onclick: () => { holeData[pk] = holeData[pk] === 'A' ? null : 'A'; render(); }
+                }, 'Team A'),
+                h('div', { class: `toggle team-b ${holeData[pk] === 'B' ? 'active' : ''}`,
+                  onclick: () => { holeData[pk] = holeData[pk] === 'B' ? null : 'B'; render(); }
+                }, 'Team B'),
+                h('div', { class: `toggle ${holeData[pk] == null ? 'active' : ''}`,
+                  onclick: () => { holeData[pk] = null; render(); }
+                }, 'None')
+              )
             )
-          )
-        : null,
+          : null
+      );
+    } else {
+      cardChildren.push(
+        h('div', { style: 'font-size:12px;color:var(--muted);margin-bottom:8px;' },
+          '9-Point scoring: Low 3 · Total 3 · High Ball 3 · Keep 1 · Take 2 · Blitz (low+total+high) doubles.')
+      );
+    }
+
+    cardChildren.push(
       h('h3', null, 'Roll'),
       h('div', { class: 'toggle-group' },
         h('div', { class: `toggle ${(holeData[rk] || 1) === 1 ? 'active' : ''}`,
@@ -908,7 +982,8 @@ function renderRound() {
         }, '3x Re-roll')
       )
     );
-    root.appendChild(ctpCard);
+
+    root.appendChild(h('div', { class: 'card' }, ...cardChildren));
   }
 
   // Playhouse toggle (only when round is a playhouse game, only on game 1 data)
@@ -940,13 +1015,14 @@ function renderRound() {
     const chips = [];
     if (bd.low && bd.low !== 'T') chips.push(`Low→${bd.low} (3)`);
     if (bd.total && bd.total !== 'T') chips.push(`Total→${bd.total} (3)`);
+    if (bd.highBall && bd.highBall !== 'T') chips.push(`High→${bd.highBall} (3)`);
     if (bd.ctp && bd.ctp !== 'NONE') chips.push(`CTP→${bd.ctp} (2)`);
     if (bd.birdie && bd.birdie !== 'T') chips.push(`Birdie→${bd.birdie} (4)`);
     if (bd.pullie) chips.push(`Pullie→${bd.pullie} (1)`);
     if (bd.keepTake) chips.push(bd.keepTake);
-    if (bd.sweep) chips.push(`SWEEP ×2 →${bd.sweep}`);
+    if (bd.blitz) chips.push(`BLITZ ×2 →${bd.blitz}`);
     if (bd.roll && bd.roll > 1) chips.push(`ROLL ×${bd.roll}`);
-    if (bd.playhoused) chips.push(`🏠 PLAYHOUSE ×2`);
+    if (bd.playhoused) chips.push(`PLAYHOUSE ×2`);
 
     root.appendChild(h('div', { class: 'card' },
       h('h2', null, g.label ? `${g.label} — Hole Points` : 'Hole Points'),
@@ -1566,7 +1642,7 @@ function renderMiddleGameCard(pts, round) {
             h('td', null, '—'), h('td', null, '—'), h('td', null, '')
           );
           const notes = [];
-          if (p.breakdown.sweep) notes.push('SWEEP');
+          if (p.breakdown.blitz) notes.push('BLITZ');
           if (p.breakdown.keepTake) notes.push(p.breakdown.keepTake);
           if (p.breakdown.roll > 1) notes.push(`×${p.breakdown.roll}`);
           return h('tr', null,

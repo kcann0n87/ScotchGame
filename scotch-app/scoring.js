@@ -115,28 +115,43 @@ const Scoring = (() => {
   }
 
   // ---------- Birdie detection ----------
-  // Uses NET birdie: net score <= par - 1 (but standard scotch usually uses gross birdie).
-  // We'll use GROSS birdie (someone in the team makes a gross birdie) which is the standard.
   function teamHasBirdie(teamPlayers, holeIdx, course) {
     const par = course.holes[holeIdx].par;
     return teamPlayers.some(p => p.scores[holeIdx] != null && p.scores[holeIdx] <= par - 1);
   }
 
+  // Highest gross score on a team for a hole (used in 9-point high-ball scoring).
+  // The team with the LARGER high score LOSES the high-ball point (other team gets 3).
+  function teamHighGross(teamPlayers, holeIdx) {
+    const scores = teamPlayers
+      .map(p => p.scores[holeIdx])
+      .filter(s => s != null);
+    if (scores.length === 0) return null;
+    return Math.max(...scores);
+  }
+  function compareHighBall(round, holeIdx) {
+    const aHi = teamHighGross(round.teamA, holeIdx);
+    const bHi = teamHighGross(round.teamB, holeIdx);
+    if (aHi == null || bHi == null) return null;
+    // LOWER max is better — team with higher max loses high ball
+    if (aHi < bHi) return 'A'; // A wins (B had higher)
+    if (bHi < aHi) return 'B';
+    return 'T';
+  }
+
   // ---------- Points game per hole ----------
-  // Returns { a: points, b: points, breakdown: {...}, lowWinner, totalWinner, ctp, birdie, pullie }
+  // Handles both 'scotch' (default) and '9point' game types.
   function pointsForHole(round, holeIdx) {
-    const hole = round.holes[holeIdx]; // flags: ctp, pullie
+    const hole = round.holes[holeIdx];
     const low = compareLow(round, holeIdx);
     const tot = compareTotal(round, holeIdx);
-
-    // Not all scores in yet
     if (low == null || tot == null) return null;
 
-    const aBirdie = teamHasBirdie(round.teamA, holeIdx, round.course);
-    const bBirdie = teamHasBirdie(round.teamB, holeIdx, round.course);
+    // Resolve effective game type: round-level or per-sub-round (5-man)
+    const gameType = round.gameType === '9point' ? '9point' : 'scotch';
 
     let a = 0, b = 0;
-    const bd = {};
+    const bd = { gameType };
 
     // Low ball (3)
     if (low === 'A') { a += 3; bd.low = 'A'; }
@@ -148,34 +163,48 @@ const Scoring = (() => {
     else if (tot === 'B') { b += 3; bd.total = 'B'; }
     else bd.total = 'T';
 
-    // CTP (2)
-    if (hole.ctp === 'A') { a += 2; bd.ctp = 'A'; }
-    else if (hole.ctp === 'B') { b += 2; bd.ctp = 'B'; }
-    else bd.ctp = null;
-
-    // Birdie (4)
+    // BLITZ is the unified name for the double-points event in both game types.
+    // In Scotch: low + total + CTP + birdie to same team (birdie reduced 4→1 first)
+    // In 9-Point: low + total + high ball to same team
+    let blitz = false;
+    let blitzTeam = null;
     let birdieWinner = null;
-    if (aBirdie && !bBirdie) { a += 4; birdieWinner = 'A'; }
-    else if (bBirdie && !aBirdie) { b += 4; birdieWinner = 'B'; }
-    else if (aBirdie && bBirdie) birdieWinner = 'T';
-    bd.birdie = birdieWinner;
 
-    // Pullie (1) - only if no one hit green in reg (tracked via flag)
-    if (hole.pullie === 'A') { a += 1; bd.pullie = 'A'; }
-    else if (hole.pullie === 'B') { b += 1; bd.pullie = 'B'; }
+    if (gameType === '9point') {
+      const hi = compareHighBall(round, holeIdx);
+      if (hi === 'A') { a += 3; bd.highBall = 'A'; }
+      else if (hi === 'B') { b += 3; bd.highBall = 'B'; }
+      else bd.highBall = 'T';
 
-    // SWEEP DOUBLING: Low + Total + CTP + Birdie all go to same team
-    // -> Birdie becomes 1 (subtract 3), then double the total
-    let sweep = false;
-    const sweepTeam = (low === 'A' && tot === 'A' && hole.ctp === 'A' && birdieWinner === 'A')
-      ? 'A'
-      : (low === 'B' && tot === 'B' && hole.ctp === 'B' && birdieWinner === 'B')
-        ? 'B'
-        : null;
-    if (sweepTeam) {
-      sweep = true;
-      if (sweepTeam === 'A') { a -= 3; /* birdie 4 -> 1 */ }
-      else { b -= 3; }
+      if (low === 'A' && tot === 'A' && hi === 'A') { blitzTeam = 'A'; blitz = true; }
+      else if (low === 'B' && tot === 'B' && hi === 'B') { blitzTeam = 'B'; blitz = true; }
+    } else {
+      // SCOTCH
+      const aBirdie = teamHasBirdie(round.teamA, holeIdx, round.course);
+      const bBirdie = teamHasBirdie(round.teamB, holeIdx, round.course);
+
+      if (hole.ctp === 'A') { a += 2; bd.ctp = 'A'; }
+      else if (hole.ctp === 'B') { b += 2; bd.ctp = 'B'; }
+      else bd.ctp = null;
+
+      if (aBirdie && !bBirdie) { a += 4; birdieWinner = 'A'; }
+      else if (bBirdie && !aBirdie) { b += 4; birdieWinner = 'B'; }
+      else if (aBirdie && bBirdie) birdieWinner = 'T';
+      bd.birdie = birdieWinner;
+
+      if (hole.pullie === 'A') { a += 1; bd.pullie = 'A'; }
+      else if (hole.pullie === 'B') { b += 1; bd.pullie = 'B'; }
+
+      blitzTeam = (low === 'A' && tot === 'A' && hole.ctp === 'A' && birdieWinner === 'A')
+        ? 'A'
+        : (low === 'B' && tot === 'B' && hole.ctp === 'B' && birdieWinner === 'B')
+          ? 'B'
+          : null;
+      if (blitzTeam) {
+        blitz = true;
+        if (blitzTeam === 'A') { a -= 3; /* birdie 4 -> 1 */ }
+        else { b -= 3; }
+      }
     }
 
     // KEEP / TAKE: look at previous hole result
@@ -188,18 +217,17 @@ const Scoring = (() => {
     if (holeIdx === 0) {
       if (a > b) { keepTakeA += 1; keepTake = 'KeepA'; }
       else if (b > a) { keepTakeB += 1; keepTake = 'KeepB'; }
-      // tied -> no keep
       a += keepTakeA;
       b += keepTakeB;
-      if (sweep) {
-        if (sweepTeam === 'A') a = a * 2;
+      if (blitz) {
+        if (blitzTeam === 'A') a = a * 2;
         else b = b * 2;
       }
       const roll0 = hole.roll || 1;
       if (roll0 > 1) { a *= roll0; b *= roll0; }
       const ph0 = !!hole.playhoused && !!round.playhouse;
       if (ph0) { a *= 2; b *= 2; }
-      bd.sweep = sweep ? sweepTeam : null;
+      bd.blitz = blitz ? blitzTeam : null;
       bd.keepTake = keepTake;
       bd.roll = roll0;
       bd.playhoused = ph0;
@@ -251,15 +279,15 @@ const Scoring = (() => {
     a += keepTakeA;
     b += keepTakeB;
 
-    // Sweep doubles the entire hole total (after adding keep/take/pullie).
-    // birdie was already reduced from 4 -> 1 above.
-    if (sweep) {
-      if (sweepTeam === 'A') a = a * 2;
+    // Blitz doubles the entire hole total (after adding keep/take/pullie).
+    // In Scotch, birdie was already reduced from 4 → 1 above.
+    if (blitz) {
+      if (blitzTeam === 'A') a = a * 2;
       else b = b * 2;
     }
 
     // Roll multiplier (1x default, 2x = trailing team rolled, 3x = leader re-rolled)
-    // Stacks multiplicatively on top of sweep. Applies to both teams equally.
+    // Stacks multiplicatively on top of blitz. Applies to both teams equally.
     const roll = hole.roll || 1;
     if (roll > 1) {
       a = a * roll;
@@ -274,7 +302,7 @@ const Scoring = (() => {
       b = b * 2;
     }
 
-    bd.sweep = sweep ? sweepTeam : null;
+    bd.blitz = blitz ? blitzTeam : null;
     bd.keepTake = keepTake;
     bd.roll = roll;
     bd.playhoused = playhoused;
@@ -432,9 +460,15 @@ const Scoring = (() => {
     const gamePlayer = nonSwings[gameNum - 1]; // 0-indexed into [nonSwing1, nonSwing2]
 
     const subBig = [gamePlayer, swing];
+    // Per-game type override (5-man can have one sub-round scotch, one 9-point)
+    const subGameType = gameNum === 1
+      ? (round.gameType1 || round.gameType || 'scotch')
+      : (round.gameType2 || round.gameType || 'scotch');
     const sub = {
       course: round.course,
       playhouse: round.playhouse,
+      gameType: subGameType,
+      startNine: round.startNine,
       teamA: bigIsA ? subBig : smallTeam,
       teamB: bigIsA ? smallTeam : subBig,
       holes: round.holes.map(hf => ({
