@@ -13,8 +13,8 @@
 // SAFETY: The anon key is safe to expose publicly. Row Level Security enforces
 // who can read/write what. Never paste the SERVICE ROLE key here.
 
-const SUPABASE_URL = '';           // <-- PASTE YOUR PROJECT URL
-const SUPABASE_ANON_KEY = '';      // <-- PASTE YOUR ANON PUBLIC KEY
+const SUPABASE_URL = 'https://sgflclztmzodywtrwndd.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNnZmxjbHp0bXpvZHl3dHJ3bmRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU0MjczNjYsImV4cCI6MjA5MTAwMzM2Nn0.MrgGoIB8lvkaAdD2SAbh805JviYRfRBBmt3iHghrIdo';
 
 const SupabaseClient = (() => {
   let _client = null;
