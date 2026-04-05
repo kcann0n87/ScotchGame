@@ -52,15 +52,22 @@ const Scoring = (() => {
   }
 
   // Settle one indy match into $ for player A (negative = A lost)
-  // backMult: 1 (default) or 2 (press when trailing, or 3-way when tied on front)
-  function indyDollars(match, stake, backMult) {
+  // backMult: 1 (default) or 2 (press when trailing, or 3-way when tied on first nine)
+  // The multiplier applies to the SECOND nine played. If starting front, that's back 9.
+  // If starting back, that's front 9.
+  function indyDollars(match, stake, backMult, startNine) {
     const perSeg = stake.game;
     const bm = backMult || 1;
+    const startBack = startNine === 'back';
+    // First nine played (no multiplier)
+    const firstDiff  = startBack ? match.backDiff  : match.frontDiff;
+    // Second nine played (gets multiplier if pressed/3-way)
+    const secondDiff = startBack ? match.frontDiff : match.backDiff;
     let aAmt = 0;
-    if (match.frontDiff > 0) aAmt += perSeg;
-    else if (match.frontDiff < 0) aAmt -= perSeg;
-    if (match.backDiff > 0) aAmt += perSeg * bm;
-    else if (match.backDiff < 0) aAmt -= perSeg * bm;
+    if (firstDiff > 0) aAmt += perSeg;
+    else if (firstDiff < 0) aAmt -= perSeg;
+    if (secondDiff > 0) aAmt += perSeg * bm;
+    else if (secondDiff < 0) aAmt -= perSeg * bm;
     if (match.totalDiff > 0) aAmt += perSeg;
     else if (match.totalDiff < 0) aAmt -= perSeg;
     return aAmt;
@@ -581,7 +588,7 @@ const Scoring = (() => {
         const key = indyKey(pa.id, pb.id);
         const choice = (round.indyBackChoice && round.indyBackChoice[key]) || null;
         const backMult = (choice === 'press' || choice === '3way') ? 2 : 1;
-        const aAmt = indyDollars(match, stake, backMult);
+        const aAmt = indyDollars(match, stake, backMult, round.startNine);
         perPlayerIndy[pa.id] += aAmt;
         perPlayerIndy[pb.id] -= aAmt;
         details.push({

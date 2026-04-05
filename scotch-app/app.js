@@ -70,6 +70,25 @@ function siArrayForTee(course, teeName) {
   return null;
 }
 
+// Swap SIs between nines so the starting 9 has the odd numbers (1,3,5,…,17)
+// and the other nine gets even (2,4,6,…,18), preserving relative difficulty
+// within each nine. Used when starting on the back 9.
+// Input: siArray of length 18 (hole order 1–18). Returns a new array.
+function swapSiForStartNine(siArray, startNine) {
+  if (startNine !== 'back') return siArray.slice();
+  const front = siArray.slice(0, 9).map((si, i) => ({ i, si }));
+  const back  = siArray.slice(9, 18).map((si, i) => ({ i: i + 9, si }));
+  // Sort each nine by original SI (hardest first)
+  front.sort((a, b) => a.si - b.si);
+  back.sort((a, b) => a.si - b.si);
+  const out = Array(18);
+  // Back (starting nine) gets odd SIs 1,3,5,…,17
+  back.forEach((h, k) => { out[h.i] = 2 * k + 1; });
+  // Front (second nine) gets even SIs 2,4,6,…,18
+  front.forEach((h, k) => { out[h.i] = 2 * k + 2; });
+  return out;
+}
+
 function uid() { return Math.random().toString(36).slice(2, 9); }
 
 // ---------- Default course templates ----------
@@ -95,7 +114,7 @@ const COURSE_PRESETS = [
   },
   {
     name: 'Mizner CC',
-    pars: [4,4,5,4,3,4,5,4,3, 4,4,4,3,4,5,5,3,5],
+    pars: [4,4,5,4,3,4,5,4,3, 4,4,4,3,4,5,3,4,5],
     si:   [7,1,11,15,9,3,5,17,13, 16,2,4,18,8,14,10,6,12]
   },
   {
@@ -147,10 +166,25 @@ function courseFromPreset(preset) {
 }
 
 // ---------- Round factory ----------
-function newRound(course, players, teamAIds, teamBIds, mode, playhouse) {
+function newRound(course, players, teamAIds, teamBIds, mode, playhouse, startNine) {
   const pars = course.holes.map(h => h.par);
+  const sn = startNine === 'back' ? 'back' : 'front';
+  // Clone the course so we can apply startNine swap without mutating the master course
+  const courseForRound = {
+    ...course,
+    startNine: sn,
+    holes: course.holes.map(hole => ({ ...hole }))
+  };
+  if (sn === 'back') {
+    const defaultSi = course.holes.map(h => h.si);
+    const swapped = swapSiForStartNine(defaultSi, 'back');
+    courseForRound.holes.forEach((hole, i) => { hole.si = swapped[i]; });
+  }
   function attachTees(p) {
-    const siArray = siArrayForTee(course, p.tees);
+    let siArray = siArrayForTee(course, p.tees);
+    if (siArray && sn === 'back') {
+      siArray = swapSiForStartNine(siArray, 'back');
+    }
     return {
       ...p,
       scores: pars.slice(),
@@ -166,7 +200,8 @@ function newRound(course, players, teamAIds, teamBIds, mode, playhouse) {
     date: new Date().toISOString(),
     mode: mode || '4man',
     playhouse: !!playhouse,
-    course,
+    startNine: sn,
+    course: courseForRound,
     teamA,
     teamB,
     baseStrokes,
@@ -500,6 +535,7 @@ function ensureDraft() {
       courseId: state.courses[0] ? state.courses[0].id : null,
       mode: '4man',
       playhouse: false,
+      startNine: 'front',
       players: [
         { id: uid(), name: 'Player 1', handicap: 10, team: 'A', stake: 'full', swing: false, tees: '' },
         { id: uid(), name: 'Player 2', handicap: 12, team: 'B', stake: 'full', swing: false, tees: '' },
@@ -574,7 +610,21 @@ function renderNewRound() {
           ...state.courses.map(c =>
             h('option', { value: c.id, ...(c.id === newRoundDraft.courseId ? { selected: 'selected' } : {}) }, c.name)
           )
-        )
+        ),
+    // Start nine toggle
+    h('h3', { style: 'margin-top:14px;' }, 'Starting Nine'),
+    h('div', { style: 'font-size:11px;color:var(--muted);margin-bottom:6px;' },
+      'If you start on the back, the handicap order swaps so the hardest holes on the starting nine get odd SIs.'),
+    h('div', { class: 'toggle-group' },
+      h('div', {
+        class: `toggle ${newRoundDraft.startNine === 'front' ? 'active' : ''}`,
+        onclick: () => { newRoundDraft.startNine = 'front'; render(); }
+      }, 'Front 9 First'),
+      h('div', {
+        class: `toggle ${newRoundDraft.startNine === 'back' ? 'active' : ''}`,
+        onclick: () => { newRoundDraft.startNine = 'back'; render(); }
+      }, 'Back 9 First')
+    )
   );
   root.appendChild(courseCard);
 
@@ -690,8 +740,8 @@ function renderNewRound() {
         const bigTeam = teamA.length === 3 ? newRoundDraft.players.filter(p=>p.team==='A') : newRoundDraft.players.filter(p=>p.team==='B');
         if (!bigTeam.some(p => p.swing)) { alert('Designate a swing player on the 3-man team'); return; }
       }
-      state.round = newRound(course, newRoundDraft.players, teamA, teamB, mode, newRoundDraft.playhouse);
-      state.currentHoleIdx = 0;
+      state.round = newRound(course, newRoundDraft.players, teamA, teamB, mode, newRoundDraft.playhouse, newRoundDraft.startNine);
+      state.currentHoleIdx = newRoundDraft.startNine === 'back' ? 9 : 0;
       state.screen = 'round';
       newRoundDraft = null;
       render();
@@ -730,8 +780,10 @@ function renderRound() {
     )
   ));
 
-  // H10 prompt: for each indy pairing, if front is tied or one is down, ask for back choice
-  if (hIdx === 9) {
+  // Turn prompt: for each indy pairing, ask for back-9-bet choice when starting second nine
+  // front-first: shows on H10 (hIdx === 9); back-first: shows on H1 (hIdx === 0)
+  const turnHoleIdx = r.startNine === 'back' ? 0 : 9;
+  if (hIdx === turnHoleIdx) {
     const prompts = buildIndyBackPrompts(r);
     if (prompts.length > 0) {
       root.appendChild(h('div', { class: 'card', style: 'border:2px solid var(--gold);' },
@@ -914,15 +966,22 @@ function renderRound() {
     ));
   }
 
-  // Bottom nav
+  // Bottom nav — respects startNine play order
+  // Play order: front-first = 0..17 normal; back-first = 9..17 then 0..8
+  const playOrder = r.startNine === 'back'
+    ? [9,10,11,12,13,14,15,16,17, 0,1,2,3,4,5,6,7,8]
+    : [0,1,2,3,4,5,6,7,8, 9,10,11,12,13,14,15,16,17];
+  const playPos = playOrder.indexOf(hIdx);
+  const isFirst = playPos === 0;
+  const isLast  = playPos === 17;
   const nav = h('div', { class: 'bottom-nav' },
     h('button', { class: 'btn secondary btn-sm', onclick: () => {
-      if (hIdx > 0) { state.currentHoleIdx = hIdx - 1; render(); }
-    }, ...(hIdx === 0 ? { disabled: 'true' } : {}) }, '← Prev'),
+      if (!isFirst) { state.currentHoleIdx = playOrder[playPos - 1]; render(); }
+    }, ...(isFirst ? { disabled: 'true' } : {}) }, '← Prev'),
     h('button', { class: 'btn btn-sm', onclick: () => {
-      if (hIdx < 17) { state.currentHoleIdx = hIdx + 1; render(); }
+      if (!isLast) { state.currentHoleIdx = playOrder[playPos + 1]; render(); }
       else { state.screen = 'summary'; render(); }
-    }}, hIdx < 17 ? 'Next →' : 'Finish')
+    }}, isLast ? 'Finish' : 'Next →')
   );
   root.appendChild(nav);
 }
@@ -992,6 +1051,9 @@ function renderSummary() {
     )
   ));
 
+  // Golf Fees card — at the TOP so it can't be missed after H18
+  root.appendChild(renderGolfFeesCard(r, allPlayers, hostCredit));
+
   // Render points / top / bottom — differs by mode
   const gameViews = result.mode === '5man'
     ? [{ label: 'Game 1', pts: result.game1, diffs: settlement.diffs.game1 },
@@ -1038,54 +1100,7 @@ function renderSummary() {
     ));
   }
 
-  // Golf fees card (host + per-player fees)
-  root.appendChild(h('div', { class: 'card' },
-    h('h2', null, 'Golf Fees'),
-    h('div', { style: 'font-size:12px;color:var(--muted);margin-bottom:10px;' },
-      'Pick the host and enter what each player owes. Fees are credited to the host and debited from each payer.'),
-    h('div', { class: 'field' },
-      h('label', null, 'Host (who paid the tab)'),
-      h('select', {
-        onchange: e => { r.hostId = e.target.value || null; save(); render(); }
-      },
-        h('option', { value: '', ...(r.hostId ? {} : { selected: 'selected' }) }, '— None —'),
-        ...allPlayers.map(p =>
-          h('option', { value: p.id, ...(r.hostId === p.id ? { selected: 'selected' } : {}) }, p.name)
-        )
-      )
-    ),
-    ...allPlayers.map(p => {
-      const isHost = r.hostId === p.id;
-      const cur = r.golfFees[p.id] != null ? String(r.golfFees[p.id]) : '';
-      return h('div', { class: 'field-row', style: 'align-items:center;gap:10px;margin-bottom:6px;' },
-        h('div', { style: 'flex:1;font-size:14px;font-weight:600;' },
-          p.name, isHost ? h('span', { style: 'font-size:10px;color:var(--gold);margin-left:6px;' }, '★ HOST') : null
-        ),
-        h('div', { style: 'flex:0 0 130px;' },
-          h('input', {
-            type: 'number',
-            inputmode: 'decimal',
-            placeholder: isHost ? '(host gets credit)' : '$0',
-            value: cur,
-            disabled: isHost ? 'true' : undefined,
-            style: isHost ? 'opacity:0.5;' : '',
-            oninput: e => {
-              const v = e.target.value;
-              if (v === '') delete r.golfFees[p.id];
-              else r.golfFees[p.id] = Number(v) || 0;
-              save();
-              // re-render to update totals live
-              render();
-            }
-          })
-        )
-      );
-    }),
-    hostCredit > 0 && r.hostId
-      ? h('div', { class: 'info', style: 'margin-top:8px;' },
-          `${allPlayers.find(p => p.id === r.hostId)?.name || 'Host'} will be credited +$${hostCredit} for golf fees.`)
-      : null
-  ));
+  // (Golf Fees card already added at top of summary)
 
   // Per-player cash (tap a player to expand breakdown)
   root.appendChild(h('div', { class: 'card' },
@@ -1302,28 +1317,82 @@ function renderPerHoleAllGames(pts, round, label) {
 // For each A×B indy pairing, check front-9 state and whether a back-9 prompt is needed.
 function buildIndyBackPrompts(round) {
   const prompts = [];
+  // Determine the "first nine" in play order — that's what we check for scoring complete.
+  const firstNineIdxs = round.startNine === 'back'
+    ? [9,10,11,12,13,14,15,16,17]
+    : [0,1,2,3,4,5,6,7,8];
   for (const pa of round.teamA) {
     for (const pb of round.teamB) {
-      // Need front 9 scores to be in (we're at H10)
-      const frontScored = [0,1,2,3,4,5,6,7,8].every(i => pa.scores[i] != null && pb.scores[i] != null);
-      if (!frontScored) continue;
+      const firstNineDone = firstNineIdxs.every(i => pa.scores[i] != null && pb.scores[i] != null);
+      if (!firstNineDone) continue;
       const match = Scoring.computeIndyMatch(round, pa, pb);
-      const frontDiff = match.frontDiff; // + = A ahead
-      const state = frontDiff === 0 ? 'tied' : 'decided';
-      const leaderName = frontDiff > 0 ? pa.name : frontDiff < 0 ? pb.name : null;
-      const trailingName = frontDiff > 0 ? pb.name : frontDiff < 0 ? pa.name : null;
+      // "front diff" in this context = diff after the FIRST nine played
+      const diff = round.startNine === 'back' ? match.backDiff : match.frontDiff;
+      const state = diff === 0 ? 'tied' : 'decided';
+      const leaderName = diff > 0 ? pa.name : diff < 0 ? pb.name : null;
+      const trailingName = diff > 0 ? pb.name : diff < 0 ? pa.name : null;
       prompts.push({
         key: Scoring.indyKey(pa.id, pb.id),
         aName: pa.name,
         bName: pb.name,
         state,
-        frontDiff,
+        frontDiff: diff,
         leaderName,
         trailingName
       });
     }
   }
   return prompts;
+}
+
+// Golf Fees card — shown at top of settlement so it's unmissable
+function renderGolfFeesCard(r, allPlayers, hostCredit) {
+  return h('div', { class: 'card', style: 'border:2px solid var(--gold);' },
+    h('h2', null, '⛳ Golf Fees'),
+    h('div', { style: 'font-size:12px;color:var(--muted);margin-bottom:10px;' },
+      'Pick who hosted (paid the tab) and enter what each player owes. Fees credit the host and debit each payer.'),
+    h('div', { class: 'field' },
+      h('label', null, 'Host (who paid the tab)'),
+      h('select', {
+        onchange: e => { r.hostId = e.target.value || null; save(); render(); }
+      },
+        h('option', { value: '', ...(r.hostId ? {} : { selected: 'selected' }) }, '— None —'),
+        ...allPlayers.map(p =>
+          h('option', { value: p.id, ...(r.hostId === p.id ? { selected: 'selected' } : {}) }, p.name)
+        )
+      )
+    ),
+    ...allPlayers.map(p => {
+      const isHost = r.hostId === p.id;
+      const cur = r.golfFees[p.id] != null ? String(r.golfFees[p.id]) : '';
+      return h('div', { class: 'field-row', style: 'align-items:center;gap:10px;margin-bottom:6px;' },
+        h('div', { style: 'flex:1;font-size:14px;font-weight:600;' },
+          p.name, isHost ? h('span', { style: 'font-size:10px;color:var(--gold);margin-left:6px;' }, '★ HOST') : null
+        ),
+        h('div', { style: 'flex:0 0 130px;' },
+          h('input', {
+            type: 'number',
+            inputmode: 'decimal',
+            placeholder: isHost ? '(host gets credit)' : '$0',
+            value: cur,
+            disabled: isHost ? 'true' : undefined,
+            style: isHost ? 'opacity:0.5;' : '',
+            oninput: e => {
+              const v = e.target.value;
+              if (v === '') delete r.golfFees[p.id];
+              else r.golfFees[p.id] = Number(v) || 0;
+              save();
+              render();
+            }
+          })
+        )
+      );
+    }),
+    hostCredit > 0 && r.hostId
+      ? h('div', { class: 'info', style: 'margin-top:8px;' },
+          `${allPlayers.find(p => p.id === r.hostId)?.name || 'Host'} credited +$${hostCredit} for golf fees.`)
+      : null
+  );
 }
 
 // Build the dollar breakdown for one player using the engine's computed lines.
