@@ -2114,11 +2114,27 @@ function renderLogin() {
     )
   ));
 
-  if (!SupabaseClient || !SupabaseClient.isConfigured()) {
+  if (typeof SupabaseClient === 'undefined') {
     root.appendChild(h('div', { class: 'card' },
       h('h2', null, 'Cloud Sync Not Set Up'),
       h('div', { class: 'warning' },
-        'This app works offline without any login. To enable cloud sync, history, and stats across devices, the app owner needs to set up Supabase and add credentials to supabase.js. See SUPABASE_SCHEMA.sql for setup instructions.'),
+        'Supabase client module not found. Make sure supabase.js is included in the build.'),
+      h('button', { class: 'btn secondary', style: 'margin-top:12px;',
+        onclick: () => { state.screen = 'home'; render(); } }, 'Continue Without Login')
+    ));
+    return;
+  }
+
+  if (!SupabaseClient.isConfigured()) {
+    // CDN might still be loading — retry in 1 second
+    if (!state._loginRetried) {
+      state._loginRetried = true;
+      setTimeout(() => { state._loginRetried = false; render(); }, 1500);
+    }
+    root.appendChild(h('div', { class: 'card' },
+      h('h2', null, 'Connecting…'),
+      h('div', { class: 'info' },
+        'Loading Supabase library. If this takes more than a few seconds, try reloading the page.'),
       h('button', { class: 'btn secondary', style: 'margin-top:12px;',
         onclick: () => { state.screen = 'home'; render(); } }, 'Continue Without Login')
     ));

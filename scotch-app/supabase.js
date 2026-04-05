@@ -22,8 +22,14 @@ const SupabaseClient = (() => {
   let _profile = null;
   const _listeners = [];
 
+  function getSupabaseLib() {
+    // The CDN UMD build may expose as window.supabase or window.Supabase
+    return window.supabase || window.Supabase;
+  }
+
   function isConfigured() {
-    return !!(SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase);
+    const lib = getSupabaseLib();
+    return !!(SUPABASE_URL && SUPABASE_ANON_KEY && lib && lib.createClient);
   }
 
   function notify() {
@@ -42,8 +48,9 @@ const SupabaseClient = (() => {
   }
 
   async function init() {
-    if (!isConfigured()) return;
-    _client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    if (!isConfigured()) { console.warn('Supabase not configured or library not loaded'); return; }
+    const lib = getSupabaseLib();
+    _client = lib.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     const { data: { session } } = await _client.auth.getSession();
     if (session) {
       _user = session.user;

@@ -15,7 +15,7 @@ html = f"""<!DOCTYPE html>
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <title>Scotch Golf</title>
 <!-- Supabase JS client (loaded from CDN; only used if credentials are set) -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
 {css}
 </style>
