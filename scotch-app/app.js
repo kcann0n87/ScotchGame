@@ -18,12 +18,36 @@ let state = {
   loginPassword: '',
   loginDisplayName: '',
   loginMessage: null,
-  loginError: null
+  loginError: null,
+  // Friends state
+  friendsList: null,          // cached friends
+  friendsSearchQuery: '',
+  friendsSearchResults: null,
+  // Player picker modal
+  playerPickerIndex: null,    // index into newRoundDraft.players currently being edited
+  playerPickerQuery: '',
+  playerPickerResults: null,
+  // Live share
+  liveShareCode: null,
+  liveShareUrl: null,
+  liveViewData: null,
+  liveViewCode: null,
+  liveViewUnsubscribe: null
 };
 
 // ---------- Persistence ----------
+let _liveShareTimer = null;
 function save() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+  // Throttled live share push (every 3s max)
+  if (state.liveShareCode && state.round && typeof SupabaseClient !== 'undefined' && SupabaseClient.isConfigured()) {
+    if (!_liveShareTimer) {
+      _liveShareTimer = setTimeout(async () => {
+        _liveShareTimer = null;
+        try { await SupabaseClient.updateLiveShare(state.liveShareCode, state.round); } catch(e) {}
+      }, 3000);
+    }
+  }
 }
 function load() {
   try {
@@ -273,6 +297,8 @@ function render() {
   if (state.screen === 'account') return renderAccount();
   if (state.screen === 'history') return renderHistory();
   if (state.screen === 'stats') return renderStats();
+  if (state.screen === 'friends') return renderFriends();
+  if (state.screen === 'liveView') return renderLiveView();
 }
 
 // ---------- Home screen ----------
@@ -589,10 +615,10 @@ function ensureDraft() {
       gameType1: 'scotch',  // 5-man: game 1 type
       gameType2: 'scotch',  // 5-man: game 2 type
       players: [
-        { id: uid(), name: '', handicap: '', team: 'A', stake: 'full', swing: false, tees: '' },
-        { id: uid(), name: '', handicap: '', team: 'B', stake: 'full', swing: false, tees: '' },
-        { id: uid(), name: '', handicap: '', team: 'A', stake: 'full', swing: false, tees: '' },
-        { id: uid(), name: '', handicap: '', team: 'B', stake: 'full', swing: false, tees: '' },
+        { id: uid(), name: '', handicap: '', team: 'A', stake: 'full', swing: false, tees: '', userId: null, invitedEmail: null },
+        { id: uid(), name: '', handicap: '', team: 'B', stake: 'full', swing: false, tees: '', userId: null, invitedEmail: null },
+        { id: uid(), name: '', handicap: '', team: 'A', stake: 'full', swing: false, tees: '', userId: null, invitedEmail: null },
+        { id: uid(), name: '', handicap: '', team: 'B', stake: 'full', swing: false, tees: '', userId: null, invitedEmail: null },
       ]
     };
   }
@@ -638,7 +664,7 @@ function renderNewRound() {
         onclick: () => {
           newRoundDraft.mode = '5man';
           if (newRoundDraft.players.length < 5) {
-            newRoundDraft.players.push({ id: uid(), name: '', handicap: '', team: 'A', stake: 'full', swing: true, tees: '' });
+            newRoundDraft.players.push({ id: uid(), name: '', handicap: '', team: 'A', stake: 'full', swing: true, tees: '', userId: null, invitedEmail: null });
           }
           render();
         }
@@ -754,12 +780,30 @@ function renderNewRound() {
             : tag === 'BOTH'
               ? h('span', { class: 'game-badge both' }, 'Both Games')
               : null;
+        const linkedBadge = p.userId
+          ? h('span', { class: 'link-badge linked' }, '★ Linked')
+          : p.invitedEmail
+            ? h('span', { class: 'link-badge invited' }, '✉ Invited')
+            : null;
         return h('div', { class: `player-card team-${p.team.toLowerCase()}` },
           h('div', { class: 'info' },
             h('div', { class: 'field' },
-              h('label', null, `Player ${i+1} Name${p.swing ? ' • SWING' : ''}`, badge ? ' ' : '', badge),
-            h('input', { type: 'text', value: p.name || '', placeholder: `Player ${i+1}`,
-              oninput: e => { p.name = e.target.value; } })
+              h('label', null, `Player ${i+1} Name${p.swing ? ' • SWING' : ''}`, badge ? ' ' : '', badge, linkedBadge ? ' ' : '', linkedBadge),
+            h('div', { style: 'display:flex;gap:6px;' },
+              h('input', { type: 'text', value: p.name || '', placeholder: `Player ${i+1}`,
+                style: 'flex:1;',
+                oninput: e => { p.name = e.target.value; } }),
+              state.authUser && SupabaseClient && SupabaseClient.isConfigured()
+                ? h('button', { class: 'btn secondary btn-sm', style: 'width:auto;padding:10px 12px;',
+                    onclick: () => {
+                      state.playerPickerIndex = i;
+                      state.playerPickerQuery = '';
+                      state.playerPickerResults = null;
+                      if (state.friendsList === null) loadFriends();
+                      render();
+                    }}, p.userId || p.invitedEmail ? 'Change' : 'Link')
+                : null
+            )
           ),
           h('div', { class: 'field-row' },
             h('div', { class: 'field', style: 'flex:0 0 70px;' },
@@ -884,6 +928,10 @@ function renderNewRound() {
       render();
     }}, 'Start Round')
   ));
+
+  // Player picker modal (only renders when playerPickerIndex is set)
+  const modal = renderPlayerPickerModal();
+  if (modal) root.appendChild(modal);
 }
 
 // ---------- Round play screen ----------
@@ -897,6 +945,30 @@ function renderRound() {
   const result = Scoring.computeRound(r);
 
   // Header
+  const liveBtn = (state.authUser && typeof SupabaseClient !== 'undefined' && SupabaseClient.isConfigured())
+    ? h('button', { class: 'back-btn', style: state.liveShareCode ? 'background:var(--gold);color:#2a1f04;' : '',
+        onclick: async () => {
+          if (state.liveShareCode) {
+            // Copy the live URL
+            const url = state.liveShareUrl || `${location.origin}${location.pathname}?live=${state.liveShareCode}`;
+            try {
+              await navigator.clipboard.writeText(url);
+              alert('Live link copied!');
+            } catch(e) { prompt('Share this link:', url); }
+            return;
+          }
+          const share = await SupabaseClient.createLiveShare(r.id);
+          if (share) {
+            state.liveShareCode = share.code;
+            state.liveShareUrl = `${location.origin}${location.pathname}?live=${share.code}`;
+            // Push initial state
+            await SupabaseClient.updateLiveShare(share.code, r);
+            render();
+          }
+        }
+      }, state.liveShareCode ? '📡 Copy Link' : '📡 Share')
+    : null;
+
   root.appendChild(h('div', { class: 'header' },
     h('div', { class: 'header-row' },
       h('button', { class: 'back-btn', onclick: () => { state.screen = 'home'; render(); } }, '← Home'),
@@ -904,7 +976,10 @@ function renderRound() {
         h('h1', null, r.course.name),
         h('div', { class: 'sub' }, `${r.teamA.map(p=>p.name).join(' / ')} vs ${r.teamB.map(p=>p.name).join(' / ')}`)
       ),
-      h('button', { class: 'back-btn', onclick: () => { state.screen = 'summary'; render(); } }, 'Σ')
+      h('div', { style: 'display:flex;gap:4px;' },
+        liveBtn,
+        h('button', { class: 'back-btn', onclick: () => { state.screen = 'summary'; render(); } }, 'Σ')
+      )
     )
   ));
 
@@ -2149,6 +2224,8 @@ function renderAccount() {
       onclick: () => { state.screen = 'history'; render(); } }, 'Round History'),
     h('button', { class: 'btn secondary', style: 'margin-top:8px;',
       onclick: () => { state.screen = 'stats'; render(); } }, 'Lifetime Stats'),
+    h('button', { class: 'btn secondary', style: 'margin-top:8px;',
+      onclick: () => { state.screen = 'friends'; render(); } }, 'Friends'),
     h('button', { class: 'btn danger', style: 'margin-top:16px;', onclick: async () => {
       await SupabaseClient.signOut();
       state.screen = 'home';
@@ -2277,6 +2354,318 @@ function renderStats() {
       )
     ));
   }
+  // Head-to-head records
+  if (h2hCache === null && state.authUser) {
+    loadStats(); // will load h2h too
+  }
+  if (h2hCache && h2hCache.length > 0) {
+    root.appendChild(h('div', { class: 'card' },
+      h('h2', null, 'Head to Head'),
+      h('table', { class: 'totals-table' },
+        h('thead', null, h('tr', null,
+          h('th', null, 'Player'),
+          h('th', null, 'Rounds'),
+          h('th', null, 'As Partner'),
+          h('th', null, 'As Opp'),
+          h('th', null, 'Their Net')
+        )),
+        h('tbody', null,
+          ...h2hCache.sort((a, b) => b.rounds - a.rounds).map(opp =>
+            h('tr', null,
+              h('td', { style: 'text-align:left;font-size:12px;font-weight:600;' }, opp.name),
+              h('td', null, String(opp.rounds)),
+              h('td', null, String(opp.as_partner)),
+              h('td', null, String(opp.as_opponent)),
+              h('td', { class: opp.net > 0 ? 'team-a' : opp.net < 0 ? 'team-b' : '' },
+                opp.net === 0 ? '—' : opp.net > 0 ? `+$${opp.net}` : `−$${Math.abs(opp.net)}`)
+            )
+          )
+        )
+      )
+    ));
+  }
+}
+
+// ==================== LIVE VIEW SCREEN ====================
+function renderLiveView() {
+  root.appendChild(h('div', { class: 'header' },
+    h('div', { class: 'header-row' },
+      h('button', { class: 'back-btn', onclick: () => {
+        if (state.liveViewUnsubscribe) { state.liveViewUnsubscribe(); state.liveViewUnsubscribe = null; }
+        state.liveViewData = null;
+        state.liveViewCode = null;
+        state.screen = 'home';
+        render();
+      } }, '← Exit'),
+      h('h1', null, 'LIVE VIEW'),
+      h('div', { style: 'font-size:10px;color:rgba(255,255,255,0.7);' }, state.liveViewCode || '')
+    )
+  ));
+
+  if (!state.liveViewData) {
+    root.appendChild(h('div', { class: 'card' },
+      h('div', { class: 'empty' },
+        h('div', { class: 'icon' }, '📡'),
+        'Connecting to live round…')
+    ));
+    return;
+  }
+
+  const liveRound = state.liveViewData;
+  const result = Scoring.computeRound(liveRound);
+  const settlement = Scoring.settle(liveRound, result);
+
+  // Show a simplified live view: player scores, current hole, running points
+  const allPlayers = [...liveRound.teamA, ...liveRound.teamB];
+  const completedHoles = allPlayers[0] ? allPlayers[0].scores.filter(s => s != null && s !== liveRound.course?.holes?.[0]?.par).length : 0;
+  const ptsA = result.mode === '5man'
+    ? (result.game1.pointsTotal.a + result.game2.pointsTotal.a)
+    : result.pointsTotal.a;
+  const ptsB = result.mode === '5man'
+    ? (result.game1.pointsTotal.b + result.game2.pointsTotal.b)
+    : result.pointsTotal.b;
+
+  root.appendChild(h('div', { class: 'result-banner' },
+    h('div', { class: 'label' }, liveRound.course?.name || 'Live Round'),
+    h('div', { class: 'amount' },
+      `${ptsA} – ${ptsB}`)
+  ));
+
+  root.appendChild(h('div', { class: 'card' },
+    h('h2', null, 'Players'),
+    ...allPlayers.map(p => {
+      const amt = settlement.perPlayer?.[p.id] || 0;
+      const gross = p.scores.reduce((a, b) => a + (b || 0), 0);
+      const color = amt > 0 ? 'var(--green-light)' : amt < 0 ? 'var(--team-b)' : 'var(--muted)';
+      return h('div', { class: `player-card team-${p.team.toLowerCase()}` },
+        h('div', { class: 'info' },
+          h('div', { class: 'name' }, p.name),
+          h('div', { class: 'hcp' }, `Team ${p.team} · Gross ${gross}`)
+        ),
+        h('div', { style: `font-size:20px;font-weight:900;color:${color};` },
+          amt === 0 ? '$0' : (amt > 0 ? `+$${amt}` : `−$${Math.abs(amt)}`))
+      );
+    })
+  ));
+
+  root.appendChild(h('div', { style: 'text-align:center;padding:20px;color:var(--muted);font-size:12px;' },
+    'Auto-updates every few seconds as scores are entered.'));
+}
+
+// ==================== FRIENDS SCREEN ====================
+async function loadFriends() {
+  if (!SupabaseClient || !SupabaseClient.isConfigured() || !state.authUser) return;
+  state.friendsList = await SupabaseClient.getFriends();
+  render();
+}
+
+async function runFriendsSearch(query) {
+  state.friendsSearchQuery = query;
+  if (!query || query.trim().length < 2) {
+    state.friendsSearchResults = null;
+    render();
+    return;
+  }
+  const results = await SupabaseClient.searchUsersByName(query.trim());
+  // Filter out self and existing friends
+  const myId = state.authUser.id;
+  const friendIds = new Set((state.friendsList || []).map(f => f.id));
+  state.friendsSearchResults = results.filter(r => r.id !== myId && !friendIds.has(r.id));
+  render();
+}
+
+function renderFriends() {
+  root.appendChild(h('div', { class: 'header' },
+    h('div', { class: 'header-row' },
+      h('button', { class: 'back-btn', onclick: () => {
+        state.friendsSearchQuery = '';
+        state.friendsSearchResults = null;
+        state.screen = 'account';
+        render();
+      } }, '← Back'),
+      h('h1', null, 'FRIENDS'),
+      h('span', { style: 'width:50px;' })
+    )
+  ));
+
+  if (!state.authUser) {
+    root.appendChild(h('div', { class: 'card' },
+      h('div', { class: 'empty' }, 'Sign in to manage friends.')
+    ));
+    return;
+  }
+
+  if (state.friendsList === null) {
+    root.appendChild(h('div', { class: 'card' }, h('div', { class: 'empty' }, 'Loading…')));
+    loadFriends();
+    return;
+  }
+
+  // Search box
+  root.appendChild(h('div', { class: 'card' },
+    h('h2', null, 'Add a Friend'),
+    h('div', { style: 'font-size:12px;color:var(--muted);margin-bottom:10px;' },
+      'Search for other registered users by name.'),
+    h('div', { class: 'field' },
+      h('input', {
+        type: 'text',
+        value: state.friendsSearchQuery,
+        placeholder: 'Type a name…',
+        oninput: e => { runFriendsSearch(e.target.value); }
+      })
+    ),
+    state.friendsSearchResults && state.friendsSearchResults.length > 0
+      ? h('div', null,
+          ...state.friendsSearchResults.map(u => h('div', { class: 'list-item' },
+            h('div', null,
+              h('div', { class: 'main' }, u.display_name),
+              h('div', { class: 'sub' }, `Hcp ${u.handicap ?? 0}`)
+            ),
+            h('button', { class: 'btn btn-sm', style: 'width:auto;', onclick: async () => {
+              await SupabaseClient.addFriend(u.id);
+              state.friendsList = null;
+              state.friendsSearchQuery = '';
+              state.friendsSearchResults = null;
+              await loadFriends();
+            }}, '+ Add')
+          ))
+        )
+      : (state.friendsSearchQuery && state.friendsSearchQuery.length >= 2
+          ? h('div', { class: 'empty', style: 'padding:20px;' }, 'No users found.')
+          : null)
+  ));
+
+  // Friends list
+  root.appendChild(h('div', { class: 'card' },
+    h('h2', null, `My Friends (${state.friendsList.length})`),
+    state.friendsList.length === 0
+      ? h('div', { class: 'empty' },
+          h('div', { class: 'icon' }, '👥'),
+          'No friends yet. Search above to add one.')
+      : h('div', null,
+          ...state.friendsList.map(f => h('div', { class: 'list-item' },
+            h('div', null,
+              h('div', { class: 'main' }, f.display_name),
+              h('div', { class: 'sub' }, `Hcp ${f.handicap ?? 0} · ${f.email || ''}`)
+            )
+          ))
+        )
+  ));
+}
+
+// ==================== PLAYER PICKER MODAL (round setup) ====================
+async function runPlayerPickerSearch(query) {
+  state.playerPickerQuery = query;
+  if (!query || query.trim().length < 2) {
+    state.playerPickerResults = null;
+    render();
+    return;
+  }
+  if (!SupabaseClient || !SupabaseClient.isConfigured()) return;
+  const results = await SupabaseClient.searchUsersByName(query.trim());
+  const myId = state.authUser ? state.authUser.id : null;
+  // Also dedupe against players already linked in this draft
+  const alreadyLinked = new Set(
+    (newRoundDraft?.players || []).map(p => p.userId).filter(Boolean)
+  );
+  state.playerPickerResults = results.filter(r => r.id !== myId && !alreadyLinked.has(r.id));
+  render();
+}
+
+function renderPlayerPickerModal() {
+  if (state.playerPickerIndex === null || state.playerPickerIndex === undefined) return null;
+  const player = newRoundDraft.players[state.playerPickerIndex];
+  if (!player) return null;
+
+  const close = () => {
+    state.playerPickerIndex = null;
+    state.playerPickerQuery = '';
+    state.playerPickerResults = null;
+    render();
+  };
+
+  const apply = (patch) => {
+    Object.assign(player, patch);
+    save();
+    close();
+  };
+
+  const query = state.playerPickerQuery || '';
+  const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(query.trim());
+  const friends = state.friendsList || [];
+  const friendMatches = query
+    ? friends.filter(f => f.display_name.toLowerCase().includes(query.toLowerCase()))
+    : friends;
+
+  return h('div', { class: 'modal-backdrop', onclick: (e) => { if (e.target === e.currentTarget) close(); } },
+    h('div', { class: 'modal-card' },
+      h('div', { class: 'modal-header' },
+        h('h2', null, `Player ${state.playerPickerIndex + 1}`),
+        h('button', { class: 'modal-close', onclick: close }, '×')
+      ),
+      state.authUser
+        ? h('div', null,
+            h('div', { class: 'field' },
+              h('label', null, 'Search friends or all users'),
+              h('input', {
+                type: 'text',
+                value: query,
+                placeholder: 'Type a name or email…',
+                oninput: e => { runPlayerPickerSearch(e.target.value); }
+              })
+            ),
+            // Friends matches
+            friendMatches.length > 0 && !(state.playerPickerResults && state.playerPickerResults.length > 0)
+              ? h('div', null,
+                  h('h3', null, 'My Friends'),
+                  ...friendMatches.slice(0, 6).map(f => h('div', { class: 'list-item',
+                    onclick: () => apply({ name: f.display_name, userId: f.id, invitedEmail: null, handicap: f.handicap || 0 })
+                  },
+                    h('div', null,
+                      h('div', { class: 'main' }, f.display_name),
+                      h('div', { class: 'sub' }, `Hcp ${f.handicap ?? 0}`)
+                    ),
+                    h('span', { class: 'tag a' }, 'Link')
+                  ))
+                )
+              : null,
+            // Search results
+            state.playerPickerResults && state.playerPickerResults.length > 0
+              ? h('div', null,
+                  h('h3', null, 'All Users'),
+                  ...state.playerPickerResults.slice(0, 10).map(u => h('div', { class: 'list-item',
+                    onclick: () => apply({ name: u.display_name, userId: u.id, invitedEmail: null, handicap: u.handicap || 0 })
+                  },
+                    h('div', null,
+                      h('div', { class: 'main' }, u.display_name),
+                      h('div', { class: 'sub' }, `Hcp ${u.handicap ?? 0}`)
+                    ),
+                    h('span', { class: 'tag a' }, 'Link')
+                  ))
+                )
+              : null,
+            // Invite by email
+            looksLikeEmail
+              ? h('button', { class: 'btn', style: 'margin-top:12px;', onclick: () => {
+                  apply({ name: query.split('@')[0], userId: null, invitedEmail: query.trim() });
+                } }, `Invite ${query.trim()}`)
+              : null
+          )
+        : h('div', { class: 'warning' }, 'Sign in to link real users.'),
+      h('h3', { style: 'margin-top:14px;' }, 'Or as Guest'),
+      h('div', { class: 'field' },
+        h('input', {
+          type: 'text',
+          value: player.name || '',
+          placeholder: `Player ${state.playerPickerIndex + 1}`,
+          oninput: e => { player.name = e.target.value; }
+        })
+      ),
+      h('button', { class: 'btn secondary', onclick: () => {
+        apply({ userId: null, invitedEmail: null });
+      } }, 'Use as Guest')
+    )
+  );
 }
 
 // ---------- Init ----------
@@ -2286,6 +2675,15 @@ async function init() {
     state.courses = COURSE_PRESETS.map(courseFromPreset);
   }
   render();
+
+  // Check for ?live=CODE in URL — open live viewer
+  const urlParams = new URLSearchParams(window.location.search);
+  const liveCode = urlParams.get('live');
+  if (liveCode) {
+    state.liveViewCode = liveCode;
+    state.screen = 'liveView';
+    render();
+  }
 
   // Initialize Supabase if credentials are set
   if (typeof SupabaseClient !== 'undefined') {
@@ -2297,6 +2695,18 @@ async function init() {
     });
     try {
       await SupabaseClient.init();
+      // If we're viewing a live share, subscribe now
+      if (state.liveViewCode) {
+        state.liveViewUnsubscribe = await SupabaseClient.subscribeToLiveShare(
+          state.liveViewCode,
+          (shareRow) => {
+            if (shareRow && shareRow.data) {
+              state.liveViewData = shareRow.data;
+              render();
+            }
+          }
+        );
+      }
     } catch (e) {
       console.warn('Supabase init failed:', e);
     }

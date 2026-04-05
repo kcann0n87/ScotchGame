@@ -632,6 +632,72 @@ input[type="number"]::-webkit-outer-spin-button {
   opacity: 0.6;
 }
 
+/* ====== MODAL ====== */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 20, 12, 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 100;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  animation: fadeIn var(--transition);
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.modal-card {
+  background: var(--card);
+  width: 100%;
+  max-width: 540px;
+  max-height: 90vh;
+  overflow-y: auto;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  padding: var(--space-lg);
+  box-shadow: var(--shadow-lg);
+  animation: slideUp var(--transition);
+}
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-md);
+}
+.modal-header h2 { margin: 0; }
+.modal-close {
+  background: var(--bg-warm);
+  border: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ====== LINK BADGES ====== */
+.link-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+.link-badge.linked { background: var(--green-soft); color: var(--green-dark); border: 1px solid var(--green-light); }
+.link-badge.invited { background: var(--gold-soft); color: var(--gold-dark); border: 1px solid var(--gold-light); }
+
 /* ====== HOLE SUMMARY — TOP/BOTTOM MINI ROWS ====== */
 .tb-summary {
   margin-top: var(--space-md);
