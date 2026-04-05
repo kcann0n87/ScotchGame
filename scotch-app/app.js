@@ -34,17 +34,40 @@ function migrateCourse(course) {
   }
   if (Array.isArray(course.teeSets)) {
     for (const ts of course.teeSets) {
-      if (ts && ts.name && !course.tees.includes(ts.name)) {
-        course.tees.push(ts.name);
+      if (ts && ts.name) {
+        const existing = course.tees.find(t => (typeof t === 'string' ? t : t.name) === ts.name);
+        if (!existing) course.tees.push({ name: ts.name, si: ts.si || null });
       }
     }
   }
-  // Seed default tees if still empty
-  if (course.tees.length === 0) {
-    course.tees = ['Blue', 'White', 'Gold'];
-  }
   delete course.mainTeesName;
   delete course.teeSets;
+  // Normalize any string entries to objects { name, si: null }
+  course.tees = course.tees.map(t =>
+    typeof t === 'string' ? { name: t, si: null } : { name: t.name, si: t.si || null }
+  );
+  // Seed default tees if still empty
+  if (course.tees.length === 0) {
+    course.tees = [
+      { name: 'Blue',  si: null },
+      { name: 'White', si: null },
+      { name: 'Gold',  si: null }
+    ];
+  }
+}
+
+// Look up a tee by name on a course. Returns { name, si } or null.
+function findTee(course, teeName) {
+  if (!course || !Array.isArray(course.tees)) return null;
+  return course.tees.find(t => t.name === teeName) || null;
+}
+
+// Get the SI array to use for a player based on their selected tee.
+// Returns an 18-element array (per-tee override) or null (use course default).
+function siArrayForTee(course, teeName) {
+  const tee = findTee(course, teeName);
+  if (tee && Array.isArray(tee.si) && tee.si.length === 18) return tee.si.slice();
+  return null;
 }
 
 function uid() { return Math.random().toString(36).slice(2, 9); }
@@ -97,12 +120,20 @@ const COURSE_PRESETS = [
   }
 ];
 
+function defaultTeesList() {
+  return [
+    { name: 'Blue',  si: null },
+    { name: 'White', si: null },
+    { name: 'Gold',  si: null }
+  ];
+}
+
 function newCourse(name) {
   return {
     id: uid(),
     name: name || 'New Course',
     holes: DEFAULT_PARS.map((par, i) => ({ par, si: DEFAULT_SI[i] })),
-    tees: ['Blue', 'White', 'Gold']
+    tees: defaultTeesList()
   };
 }
 
@@ -111,7 +142,7 @@ function courseFromPreset(preset) {
     id: uid(),
     name: preset.name,
     holes: preset.pars.map((par, i) => ({ par, si: preset.si[i] })),
-    tees: ['Blue', 'White', 'Gold']
+    tees: defaultTeesList()
   };
 }
 
@@ -119,7 +150,13 @@ function courseFromPreset(preset) {
 function newRound(course, players, teamAIds, teamBIds, mode, playhouse) {
   const pars = course.holes.map(h => h.par);
   function attachTees(p) {
-    return { ...p, scores: pars.slice(), teesName: p.tees || '' };
+    const siArray = siArrayForTee(course, p.tees);
+    return {
+      ...p,
+      scores: pars.slice(),
+      teesName: p.tees || '',
+      siArray: siArray || null
+    };
   }
   const teamA = players.filter(p => teamAIds.includes(p.id)).map(attachTees);
   const teamB = players.filter(p => teamBIds.includes(p.id)).map(attachTees);
@@ -346,36 +383,100 @@ function renderCourseEdit() {
       )
     ),
 
-    // Tee boxes (simple name list)
+    // Tee boxes (with optional per-tee handicap override)
     h('h3', { style: 'margin-top:18px;' }, 'Tee Boxes'),
     h('div', { style: 'font-size:12px;color:var(--muted);margin-bottom:8px;' },
-      'These show up in the dropdown when starting a round. Add any you play.'),
-    ...course.tees.map((teeName, idx) =>
-      h('div', { class: 'field-row', style: 'align-items:center;gap:8px;margin-bottom:6px;' },
-        h('input', {
-          type: 'text',
-          value: teeName,
-          style: 'flex:1;',
-          oninput: e => { course.tees[idx] = e.target.value; save(); }
-        }),
-        h('button', {
-          class: 'btn danger btn-sm',
-          style: 'width:auto;',
-          onclick: () => {
-            if (confirm(`Delete "${course.tees[idx]}"?`)) {
-              course.tees.splice(idx, 1);
-              save();
+      'These show up in the dropdown when starting a round. Tap "Override Hcp" to use a different handicap allocation for this tee (used in individual match strokes).'),
+    ...course.tees.map((tee, idx) => {
+      const hasOverride = Array.isArray(tee.si) && tee.si.length === 18;
+      const isOpen = state.expandedTeeIdx === idx;
+      return h('div', { style: 'background:var(--bg);border-radius:8px;padding:10px;margin-bottom:8px;' },
+        h('div', { class: 'field-row', style: 'align-items:center;gap:8px;' },
+          h('input', {
+            type: 'text',
+            value: tee.name,
+            style: 'flex:1;',
+            oninput: e => { tee.name = e.target.value; save(); }
+          }),
+          h('button', {
+            class: `btn btn-sm ${hasOverride ? 'gold' : 'secondary'}`,
+            style: 'width:auto;',
+            onclick: () => {
+              state.expandedTeeIdx = isOpen ? null : idx;
               render();
             }
-          }
-        }, '×')
-      )
-    ),
+          }, hasOverride ? '★ Hcp' : 'Override Hcp'),
+          h('button', {
+            class: 'btn danger btn-sm',
+            style: 'width:auto;',
+            onclick: () => {
+              if (confirm(`Delete "${tee.name}"?`)) {
+                course.tees.splice(idx, 1);
+                if (state.expandedTeeIdx === idx) state.expandedTeeIdx = null;
+                save();
+                render();
+              }
+            }
+          }, '×')
+        ),
+        isOpen
+          ? h('div', { style: 'margin-top:10px;' },
+              h('div', { style: 'font-size:11px;color:var(--muted);margin-bottom:6px;' },
+                'Per-hole handicap index 1–18 for this tee. Leave blank to use the course default.'),
+              h('div', { style: 'display:flex;gap:8px;align-items:center;margin-bottom:8px;' },
+                h('button', {
+                  class: 'btn secondary btn-sm',
+                  style: 'width:auto;',
+                  onclick: () => {
+                    if (!Array.isArray(tee.si) || tee.si.length !== 18) {
+                      tee.si = course.holes.map(hole => hole.si);
+                    } else {
+                      tee.si = null;
+                    }
+                    save();
+                    render();
+                  }
+                }, hasOverride ? 'Remove Override' : 'Seed from Default')
+              ),
+              hasOverride
+                ? h('table', { class: 'totals-table' },
+                    h('thead', null,
+                      h('tr', null,
+                        h('th', null, '#'),
+                        h('th', null, 'Hcp')
+                      )
+                    ),
+                    h('tbody', null,
+                      ...tee.si.map((siVal, i) =>
+                        h('tr', null,
+                          h('td', null, String(i + 1)),
+                          h('td', null,
+                            h('input', {
+                              type: 'number',
+                              value: siVal,
+                              min: 1,
+                              max: 18,
+                              style: 'width:60px;padding:6px;text-align:center;',
+                              oninput: e => {
+                                tee.si[i] = parseInt(e.target.value) || 1;
+                                save();
+                              }
+                            })
+                          )
+                        )
+                      )
+                    )
+                  )
+                : null
+            )
+          : null
+      );
+    }),
     h('button', {
       class: 'btn secondary',
       style: 'margin-bottom:16px;',
       onclick: () => {
-        course.tees.push('New Tee');
+        course.tees.push({ name: 'New Tee', si: null });
         save();
         render();
       }
@@ -520,7 +621,7 @@ function renderNewRound() {
               const course = state.courses.find(c => c.id === newRoundDraft.courseId);
               const tees = (course && course.tees) || [];
               // Default this player's tees to first option if not set
-              if (!p.tees && tees.length > 0) p.tees = tees[0];
+              if (!p.tees && tees.length > 0) p.tees = tees[0].name;
               return h('select', {
                 onchange: e => {
                   const v = e.target.value;
@@ -528,7 +629,8 @@ function renderNewRound() {
                     const name = prompt('New tee box name:');
                     if (name && name.trim() && course) {
                       const trimmed = name.trim();
-                      if (!course.tees.includes(trimmed)) course.tees.push(trimmed);
+                      const exists = course.tees.find(t => t.name === trimmed);
+                      if (!exists) course.tees.push({ name: trimmed, si: null });
                       p.tees = trimmed;
                       save();
                       render();
@@ -541,9 +643,10 @@ function renderNewRound() {
                   save();
                 }
               },
-                ...tees.map(name =>
-                  h('option', { value: name, ...(p.tees === name ? { selected: 'selected' } : {}) }, name)
-                ),
+                ...tees.map(tee => {
+                  const label = tee.name + (Array.isArray(tee.si) && tee.si.length === 18 ? ' ★' : '');
+                  return h('option', { value: tee.name, ...(p.tees === tee.name ? { selected: 'selected' } : {}) }, label);
+                }),
                 h('option', { value: '__add__' }, '+ Add new tee…')
               );
             })()
