@@ -2771,6 +2771,21 @@ function renderRound() {
   );
   root.appendChild(scoreCard);
 
+  // Playhouse toggle — first decision after scores, before CTP
+  if (r.playhouse) {
+    root.appendChild(h('div', { class: 'card' },
+      h('h2', null, 'Playhouse'),
+      h('div', { style: 'font-size:12px;color:var(--muted);margin-bottom:8px;' },
+        'Doubles this hole\'s middle-game points (declared before the hole).'),
+      h('div', { class: 'toggle-group' },
+        h('div', { class: `toggle ${!holeData.playhoused ? 'active' : ''}`,
+          onclick: () => { holeData.playhoused = false; render(); } }, 'Normal'),
+        h('div', { class: `toggle ${holeData.playhoused ? 'active' : ''}`,
+          onclick: () => { holeData.playhoused = true; render(); } }, '🏠 Playhouse ×2')
+      )
+    ));
+  }
+
   // CTP / Pullie / Roll — one section in 4-man, two in 5-man
   // In 9-point mode, CTP & Pullie are hidden (only Roll shown)
   const is5man = r.mode === '5man';
@@ -2841,21 +2856,6 @@ function renderRound() {
     );
 
     root.appendChild(h('div', { class: 'card' }, ...cardChildren));
-  }
-
-  // Playhouse toggle (only when round is a playhouse game, only on game 1 data)
-  if (r.playhouse) {
-    root.appendChild(h('div', { class: 'card' },
-      h('h2', null, 'Playhouse'),
-      h('div', { style: 'font-size:12px;color:var(--muted);margin-bottom:8px;' },
-        'Doubles this hole\'s middle-game points (declared before the hole).'),
-      h('div', { class: 'toggle-group' },
-        h('div', { class: `toggle ${!holeData.playhoused ? 'active' : ''}`,
-          onclick: () => { holeData.playhoused = false; render(); } }, 'Normal'),
-        h('div', { class: `toggle ${holeData.playhoused ? 'active' : ''}`,
-          onclick: () => { holeData.playhoused = true; render(); } }, '🏠 Playhouse ×2')
-      )
-    ));
   }
 
   // Hole result summary
