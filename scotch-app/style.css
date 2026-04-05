@@ -632,6 +632,40 @@ input[type="number"]::-webkit-outer-spin-button {
   opacity: 0.6;
 }
 
+/* ====== HOLE SUMMARY — TOP/BOTTOM MINI ROWS ====== */
+.tb-summary {
+  margin-top: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: 1px dashed var(--border-light);
+  display: flex;
+  gap: var(--space-sm);
+}
+.tb-row {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: var(--space-sm);
+  background: var(--card-alt);
+  border-radius: var(--radius-sm);
+}
+.tb-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+  font-weight: 800;
+}
+.tb-result {
+  font-size: 14px;
+  font-weight: 800;
+  font-feature-settings: "tnum";
+}
+.tb-result.team-a { color: var(--team-a); }
+.tb-result.team-b { color: var(--team-b); }
+.tb-result.tied { color: var(--muted); }
+
 /* ====== GAME BADGES (5-man player assignment) ====== */
 .game-badge {
   display: inline-block;

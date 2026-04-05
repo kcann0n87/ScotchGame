@@ -1039,11 +1039,35 @@ function renderRound() {
     root.appendChild(h('div', { class: 'card' }, ...cardChildren));
   }
 
-  // Hole result summary
+  // Hole result summary — Middle game points + Top/Bottom hole results
+  // Helper: find per-hole point entry in a game's front/back main segment
+  function holePointsIn(game, holeIdx) {
+    if (!game) return null;
+    const seg = game.segments.find(s =>
+      s.name !== 'Overall' && holeIdx >= s.startHole && holeIdx <= s.endHole
+    );
+    if (!seg) return null;
+    return seg.points.find(p => p.h === holeIdx) || null;
+  }
+  function topBottomRow(label, entry) {
+    if (!entry) return null;
+    const aWin = entry.a > entry.b;
+    const bWin = entry.b > entry.a;
+    const labelEl = aWin
+      ? h('span', { class: 'tb-result team-a' }, `A +${entry.a - entry.b}`)
+      : bWin
+        ? h('span', { class: 'tb-result team-b' }, `B +${entry.b - entry.a}`)
+        : h('span', { class: 'tb-result tied' }, 'Tied');
+    return h('div', { class: 'tb-row' },
+      h('span', { class: 'tb-label' }, label),
+      labelEl
+    );
+  }
+
   const holeGames = result.mode === '5man'
-    ? [{ label: 'Game 1', hp: result.game1.points[hIdx] },
-       { label: 'Game 2', hp: result.game2.points[hIdx] }]
-    : [{ label: null, hp: result.points[hIdx] }];
+    ? [{ label: 'Game 1', hp: result.game1.points[hIdx], sub: result.game1 },
+       { label: 'Game 2', hp: result.game2.points[hIdx], sub: result.game2 }]
+    : [{ label: null, hp: result.points[hIdx], sub: result }];
 
   for (const g of holeGames) {
     const hp = g.hp;
@@ -1062,21 +1086,30 @@ function renderRound() {
     if (bd.roll && bd.roll > 1) chips.push(`ROLL ×${bd.roll}`);
     if (bd.playhoused) chips.push(`PLAYHOUSE ×2`);
 
+    // Top / Bottom per-hole results
+    const topEntry    = holePointsIn(g.sub.top, hIdx);
+    const bottomEntry = holePointsIn(g.sub.bottom, hIdx);
+
     root.appendChild(h('div', { class: 'card' },
       h('h2', null, g.label ? `${g.label} — Hole Points` : 'Hole Points'),
       h('div', { style: 'display:flex;justify-content:space-around;text-align:center;padding:8px 0;' },
         h('div', null,
-          h('div', { style: 'font-size:11px;color:var(--muted);text-transform:uppercase;' }, 'Team A'),
-          h('div', { style: `font-size:32px;font-weight:800;color:${winner==='A'?'var(--blue)':'var(--muted)'};` }, String(hp.a))
+          h('div', { style: 'font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;' }, 'Team A'),
+          h('div', { style: `font-size:36px;font-weight:900;color:${winner==='A'?'var(--team-a)':'var(--muted)'};font-feature-settings:"tnum";` }, String(hp.a))
         ),
         h('div', null,
-          h('div', { style: 'font-size:11px;color:var(--muted);text-transform:uppercase;' }, 'Team B'),
-          h('div', { style: `font-size:32px;font-weight:800;color:${winner==='B'?'var(--red)':'var(--muted)'};` }, String(hp.b))
+          h('div', { style: 'font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;' }, 'Team B'),
+          h('div', { style: `font-size:36px;font-weight:900;color:${winner==='B'?'var(--team-b)':'var(--muted)'};font-feature-settings:"tnum";` }, String(hp.b))
         )
       ),
       chips.length > 0
-        ? h('div', { style: 'font-size:12px;color:var(--muted);text-align:center;margin-top:4px;' }, chips.join(' • '))
-        : null
+        ? h('div', { style: 'font-size:11px;color:var(--muted);text-align:center;margin-top:4px;line-height:1.5;' }, chips.join(' • '))
+        : null,
+      // Top & Bottom game hole results
+      h('div', { class: 'tb-summary' },
+        topBottomRow('Top Game', topEntry),
+        topBottomRow('Bottom Game', bottomEntry)
+      )
     ));
   }
 
