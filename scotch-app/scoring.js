@@ -192,8 +192,8 @@ const Scoring = (() => {
       else if (aBirdie && bBirdie) birdieWinner = 'T';
       bd.birdie = birdieWinner;
 
-      if (hole.pullie === 'A') { a += 1; bd.pullie = 'A'; }
-      else if (hole.pullie === 'B') { b += 1; bd.pullie = 'B'; }
+      if (hole.polie === 'A') { a += 1; bd.polie = 'A'; }
+      else if (hole.polie === 'B') { b += 1; bd.polie = 'B'; }
 
       blitzTeam = (low === 'A' && tot === 'A' && hole.ctp === 'A' && birdieWinner === 'A')
         ? 'A'
@@ -279,7 +279,7 @@ const Scoring = (() => {
     a += keepTakeA;
     b += keepTakeB;
 
-    // Blitz doubles the entire hole total (after adding keep/take/pullie).
+    // Blitz doubles the entire hole total (after adding keep/take/polie).
     // In Scotch, birdie was already reduced from 4 → 1 above.
     if (blitz) {
       if (blitzTeam === 'A') a = a * 2;
@@ -473,7 +473,7 @@ const Scoring = (() => {
       teamB: bigIsA ? smallTeam : subBig,
       holes: round.holes.map(hf => ({
         ctp:    gameNum === 1 ? hf.ctp    : hf.ctp2,
-        pullie: gameNum === 1 ? hf.pullie : hf.pullie2,
+        polie: gameNum === 1 ? hf.polie : hf.polie2,
         roll:   gameNum === 1 ? (hf.roll || 1) : (hf.roll2 || 1),
         playhoused: !!hf.playhoused
       }))

@@ -8,7 +8,17 @@ let state = {
   round: null,
   courses: [],
   expanded: { middle: false, top: false, bottom: false },
-  expandedPlayer: null
+  expandedPlayer: null,
+  // Auth state (mirrors Supabase client's internal state)
+  authUser: null,
+  authProfile: null,
+  // Login screen UI state
+  loginMode: 'signin',  // 'signin' | 'signup' | 'magic'
+  loginEmail: '',
+  loginPassword: '',
+  loginDisplayName: '',
+  loginMessage: null,
+  loginError: null
 };
 
 // ---------- Persistence ----------
@@ -23,6 +33,13 @@ function load() {
   // Migrate older course shapes to the simple { name, holes, tees: [names] } shape
   if (state.courses) {
     for (const c of state.courses) migrateCourse(c);
+  }
+  // Migrate pullie → polie on any in-progress round data
+  if (state.round && Array.isArray(state.round.holes)) {
+    for (const h of state.round.holes) {
+      if (h && h.pullie !== undefined) { h.polie = h.pullie; delete h.pullie; }
+      if (h && h.pullie2 !== undefined) { h.polie2 = h.pullie2; delete h.pullie2; }
+    }
   }
 }
 
@@ -209,8 +226,8 @@ function newRound(course, players, teamAIds, teamBIds, mode, playhouse, startNin
     teamB,
     baseStrokes,
     holes: Array(18).fill(null).map(() => ({
-      ctp: null, pullie: null, roll: 1, playhoused: false,
-      ctp2: null, pullie2: null, roll2: 1
+      ctp: null, polie: null, roll: 1, playhoused: false,
+      ctp2: null, polie2: null, roll2: 1
     })),
     golfFees: {},
     hostId: null,
@@ -252,6 +269,10 @@ function render() {
   if (state.screen === 'courseEdit') return renderCourseEdit();
   if (state.screen === 'round') return renderRound();
   if (state.screen === 'summary') return renderSummary();
+  if (state.screen === 'login') return renderLogin();
+  if (state.screen === 'account') return renderAccount();
+  if (state.screen === 'history') return renderHistory();
+  if (state.screen === 'stats') return renderStats();
 }
 
 // ---------- Home screen ----------
@@ -292,11 +313,32 @@ function renderHome() {
   );
   root.appendChild(menu);
 
+  // Account / sign-in card
+  const isCloudOn = typeof SupabaseClient !== 'undefined' && SupabaseClient.isConfigured();
+  const accountCard = h('div', { class: 'card' },
+    h('h2', null, 'Account'),
+    state.authUser
+      ? h('div', null,
+          h('div', { style: 'font-size:15px;font-weight:700;' }, state.authProfile?.display_name || state.authUser.email),
+          h('div', { style: 'font-size:12px;color:var(--muted);margin-bottom:12px;' }, state.authUser.email),
+          h('button', { class: 'btn secondary', onclick: () => { state.screen = 'account'; render(); } }, 'Account · History · Stats')
+        )
+      : h('div', null,
+          h('div', { style: 'font-size:12px;color:var(--muted);margin-bottom:10px;' },
+            isCloudOn
+              ? 'Sign in to sync rounds, see your history, and track lifetime stats across devices.'
+              : 'Cloud sync not configured yet. The app works fully offline — your data stays on this device.'),
+          h('button', { class: 'btn', onclick: () => { state.screen = 'login'; render(); } },
+            isCloudOn ? 'Sign In / Sign Up' : 'Set Up Cloud Sync')
+        )
+  );
+  root.appendChild(accountCard);
+
   const rules = h('div', { class: 'card' },
     h('h2', null, 'Rules Reference'),
     h('div', { class: 'rules-panel' },
       h('div', { class: 'rule-group' },
-        h('strong', null, 'Scotch: '), 'Low 3 • Total 3 • CTP 2 • Birdie 4 • Keep 1 • Take 2 • Pullie 1',
+        h('strong', null, 'Scotch: '), 'Low 3 • Total 3 • CTP 2 • Birdie 4 • Keep 1 • Take 2 • Polie 1',
         h('br'),
         h('strong', null, 'Blitz: '), 'Low+Total+CTP+Birdie → birdie becomes 1, total doubles'
       ),
@@ -967,16 +1009,16 @@ function renderRound() {
     ));
   }
 
-  // CTP / Pullie / Roll — one section in 4-man, two in 5-man
-  // In 9-point mode, CTP & Pullie are hidden (only Roll shown)
+  // CTP / Polie / Roll — one section in 4-man, two in 5-man
+  // In 9-point mode, CTP & Polie are hidden (only Roll shown)
   const is5man = r.mode === '5man';
   const games = is5man
-    ? [{ label: 'Game 1', ctpKey: 'ctp',  pullieKey: 'pullie',  rollKey: 'roll',  gameType: r.gameType1 || 'scotch' },
-       { label: 'Game 2', ctpKey: 'ctp2', pullieKey: 'pullie2', rollKey: 'roll2', gameType: r.gameType2 || 'scotch' }]
-    : [{ label: null, ctpKey: 'ctp', pullieKey: 'pullie', rollKey: 'roll', gameType: r.gameType || 'scotch' }];
+    ? [{ label: 'Game 1', ctpKey: 'ctp',  polieKey: 'polie',  rollKey: 'roll',  gameType: r.gameType1 || 'scotch' },
+       { label: 'Game 2', ctpKey: 'ctp2', polieKey: 'polie2', rollKey: 'roll2', gameType: r.gameType2 || 'scotch' }]
+    : [{ label: null, ctpKey: 'ctp', polieKey: 'polie', rollKey: 'roll', gameType: r.gameType || 'scotch' }];
 
   for (const g of games) {
-    const ck = g.ctpKey, pk = g.pullieKey, rk = g.rollKey;
+    const ck = g.ctpKey, pk = g.polieKey, rk = g.rollKey;
     const isScotch = g.gameType !== '9point';
     const headerLabel = g.label
       ? `${g.label} — ${isScotch ? 'Closest to the Pin' : '9-Point Game'}`
@@ -999,7 +1041,7 @@ function renderRound() {
         ),
         (holeData[ck] === 'NONE' || holeData[ck] === null)
           ? h('div', null,
-              h('h3', null, 'Pullie (no one hit green in reg)'),
+              h('h3', null, 'Polie (no one hit green in reg)'),
               h('div', { class: 'toggle-group' },
                 h('div', { class: `toggle team-a ${holeData[pk] === 'A' ? 'active' : ''}`,
                   onclick: () => { holeData[pk] = holeData[pk] === 'A' ? null : 'A'; render(); }
@@ -1080,7 +1122,7 @@ function renderRound() {
     if (bd.highBall && bd.highBall !== 'T') chips.push(`High→${bd.highBall} (3)`);
     if (bd.ctp && bd.ctp !== 'NONE') chips.push(`CTP→${bd.ctp} (2)`);
     if (bd.birdie && bd.birdie !== 'T') chips.push(`Birdie→${bd.birdie} (4)`);
-    if (bd.pullie) chips.push(`Pullie→${bd.pullie} (1)`);
+    if (bd.polie) chips.push(`Polie→${bd.polie} (1)`);
     if (bd.keepTake) chips.push(bd.keepTake);
     if (bd.blitz) chips.push(`BLITZ ×2 →${bd.blitz}`);
     if (bd.roll && bd.roll > 1) chips.push(`ROLL ×${bd.roll}`);
@@ -1169,6 +1211,25 @@ function renderSummary() {
   if (!r) { state.screen = 'home'; return render(); }
   const result = Scoring.computeRound(r);
   const settlement = Scoring.settle(r, result);
+
+  // Cloud sync: save round once, if signed in and not already saved
+  if (!r.cloudSavedId && typeof SupabaseClient !== 'undefined' && SupabaseClient.isConfigured() && state.authUser) {
+    r.cloudSavedId = 'pending';
+    SupabaseClient.saveRound(r, { ...settlement, perPlayer: settlement.perPlayer })
+      .then(row => {
+        if (row) {
+          r.cloudSavedId = row.id;
+          // Invalidate caches so next visit reloads
+          historyCache = null;
+          statsCache = null;
+          save();
+        }
+      })
+      .catch(err => {
+        console.warn('Round save failed:', err);
+        r.cloudSavedId = null;
+      });
+  }
 
   // Ensure golf fee state exists on the round
   if (!r.golfFees) r.golfFees = {};
@@ -1967,14 +2028,279 @@ function renderSegmentCard(title, game) {
   );
 }
 
+// ==================== AUTH / LOGIN SCREENS ====================
+
+function renderLogin() {
+  root.appendChild(h('div', { class: 'header' },
+    h('div', { class: 'header-row' },
+      h('button', { class: 'back-btn', onclick: () => { state.screen = 'home'; render(); } }, '← Back'),
+      h('h1', null, 'SIGN IN'),
+      h('span', { style: 'width:50px;' })
+    )
+  ));
+
+  if (!SupabaseClient || !SupabaseClient.isConfigured()) {
+    root.appendChild(h('div', { class: 'card' },
+      h('h2', null, 'Cloud Sync Not Set Up'),
+      h('div', { class: 'warning' },
+        'This app works offline without any login. To enable cloud sync, history, and stats across devices, the app owner needs to set up Supabase and add credentials to supabase.js. See SUPABASE_SCHEMA.sql for setup instructions.'),
+      h('button', { class: 'btn secondary', style: 'margin-top:12px;',
+        onclick: () => { state.screen = 'home'; render(); } }, 'Continue Without Login')
+    ));
+    return;
+  }
+
+  const mode = state.loginMode || 'signin';
+  const card = h('div', { class: 'card' },
+    h('h2', null, mode === 'signup' ? 'Create Account' : mode === 'magic' ? 'Magic Link' : 'Sign In'),
+    // Mode switcher
+    h('div', { class: 'toggle-group', style: 'margin-bottom:16px;' },
+      h('div', { class: `toggle ${mode === 'signin' ? 'active' : ''}`,
+        onclick: () => { state.loginMode = 'signin'; state.loginError = null; state.loginMessage = null; render(); } }, 'Sign In'),
+      h('div', { class: `toggle ${mode === 'signup' ? 'active' : ''}`,
+        onclick: () => { state.loginMode = 'signup'; state.loginError = null; state.loginMessage = null; render(); } }, 'Sign Up'),
+      h('div', { class: `toggle ${mode === 'magic' ? 'active' : ''}`,
+        onclick: () => { state.loginMode = 'magic'; state.loginError = null; state.loginMessage = null; render(); } }, 'Magic Link')
+    ),
+    // Display name (signup only)
+    mode === 'signup' ? h('div', { class: 'field' },
+      h('label', null, 'Display Name'),
+      h('input', { type: 'text', value: state.loginDisplayName || '', placeholder: 'Kyle Cannon',
+        oninput: e => { state.loginDisplayName = e.target.value; } })
+    ) : null,
+    h('div', { class: 'field' },
+      h('label', null, 'Email'),
+      h('input', { type: 'email', value: state.loginEmail || '', placeholder: 'you@example.com',
+        oninput: e => { state.loginEmail = e.target.value; } })
+    ),
+    mode !== 'magic' ? h('div', { class: 'field' },
+      h('label', null, 'Password'),
+      h('input', { type: 'password', value: state.loginPassword || '', placeholder: '••••••••',
+        oninput: e => { state.loginPassword = e.target.value; } })
+    ) : null,
+    state.loginError ? h('div', { class: 'warning' }, state.loginError) : null,
+    state.loginMessage ? h('div', { class: 'info' }, state.loginMessage) : null,
+    h('button', { class: 'btn', style: 'margin-top:8px;', onclick: async () => {
+      state.loginError = null;
+      state.loginMessage = null;
+      try {
+        if (mode === 'signin') {
+          const { error } = await SupabaseClient.signInWithEmail(state.loginEmail, state.loginPassword);
+          if (error) throw error;
+        } else if (mode === 'signup') {
+          if (!state.loginDisplayName || !state.loginDisplayName.trim()) {
+            state.loginError = 'Please enter a display name.';
+            render();
+            return;
+          }
+          const { error } = await SupabaseClient.signUpWithEmail(state.loginEmail, state.loginPassword, state.loginDisplayName.trim());
+          if (error) throw error;
+          state.loginMessage = 'Check your email to confirm your account.';
+        } else if (mode === 'magic') {
+          const { error } = await SupabaseClient.signInWithMagicLink(state.loginEmail);
+          if (error) throw error;
+          state.loginMessage = 'Magic link sent! Check your email.';
+        }
+        render();
+      } catch (err) {
+        state.loginError = err.message || String(err);
+        render();
+      }
+    }}, mode === 'signup' ? 'Create Account' : mode === 'magic' ? 'Send Link' : 'Sign In'),
+    h('button', { class: 'btn secondary', style: 'margin-top:10px;', onclick: async () => {
+      state.loginError = null;
+      try {
+        await SupabaseClient.signInWithGoogle();
+      } catch (err) {
+        state.loginError = err.message || 'Google sign-in not configured on the server.';
+        render();
+      }
+    }}, 'Continue with Google')
+  );
+  root.appendChild(card);
+}
+
+function renderAccount() {
+  const user = state.authUser;
+  const profile = state.authProfile;
+  root.appendChild(h('div', { class: 'header' },
+    h('div', { class: 'header-row' },
+      h('button', { class: 'back-btn', onclick: () => { state.screen = 'home'; render(); } }, '← Back'),
+      h('h1', null, 'ACCOUNT'),
+      h('span', { style: 'width:50px;' })
+    )
+  ));
+  if (!user) {
+    root.appendChild(h('div', { class: 'card' },
+      h('div', { class: 'empty' },
+        h('div', { class: 'icon' }, '👤'),
+        'Not signed in.'
+      ),
+      h('button', { class: 'btn', onclick: () => { state.screen = 'login'; render(); } }, 'Sign In / Sign Up')
+    ));
+    return;
+  }
+  root.appendChild(h('div', { class: 'card' },
+    h('h2', null, 'Profile'),
+    h('div', { style: 'font-size:16px;font-weight:700;' }, profile?.display_name || user.email),
+    h('div', { style: 'font-size:13px;color:var(--muted);margin-top:2px;' }, user.email),
+    h('div', { style: 'font-size:12px;color:var(--muted);margin-top:6px;' }, `Handicap: ${profile?.handicap ?? 0}`),
+    h('button', { class: 'btn secondary', style: 'margin-top:16px;',
+      onclick: () => { state.screen = 'history'; render(); } }, 'Round History'),
+    h('button', { class: 'btn secondary', style: 'margin-top:8px;',
+      onclick: () => { state.screen = 'stats'; render(); } }, 'Lifetime Stats'),
+    h('button', { class: 'btn danger', style: 'margin-top:16px;', onclick: async () => {
+      await SupabaseClient.signOut();
+      state.screen = 'home';
+      render();
+    }}, 'Sign Out')
+  ));
+}
+
+// ==================== HISTORY SCREEN ====================
+let historyCache = null;
+async function loadHistory() {
+  if (!SupabaseClient || !SupabaseClient.isConfigured() || !state.authUser) return [];
+  historyCache = await SupabaseClient.listMyRounds();
+  render();
+}
+function renderHistory() {
+  root.appendChild(h('div', { class: 'header' },
+    h('div', { class: 'header-row' },
+      h('button', { class: 'back-btn', onclick: () => { state.screen = 'account'; render(); } }, '← Back'),
+      h('h1', null, 'HISTORY'),
+      h('span', { style: 'width:50px;' })
+    )
+  ));
+  if (!state.authUser) {
+    root.appendChild(h('div', { class: 'card' },
+      h('div', { class: 'empty' }, 'Sign in to see your history.')
+    ));
+    return;
+  }
+  if (historyCache === null) {
+    root.appendChild(h('div', { class: 'card' }, h('div', { class: 'empty' }, 'Loading…')));
+    loadHistory();
+    return;
+  }
+  if (historyCache.length === 0) {
+    root.appendChild(h('div', { class: 'card' },
+      h('div', { class: 'empty' },
+        h('div', { class: 'icon' }, '⛳'),
+        'No rounds yet. Finish a round while signed in to save it here.')
+    ));
+    return;
+  }
+  root.appendChild(h('div', { class: 'card' },
+    h('h2', null, `${historyCache.length} Rounds`),
+    ...historyCache.map(r => {
+      const amt = r.my_amount || 0;
+      const amtColor = amt > 0 ? 'var(--green-light)' : amt < 0 ? 'var(--team-b)' : 'var(--muted)';
+      const amtText = amt === 0 ? 'Even' : amt > 0 ? `+$${amt}` : `−$${Math.abs(amt)}`;
+      const date = new Date(r.played_at).toLocaleDateString();
+      return h('div', { class: 'list-item' },
+        h('div', null,
+          h('div', { class: 'main' }, r.course_name),
+          h('div', { class: 'sub' }, `${date} · ${r.mode === '5man' ? '5-Man' : '4-Man'} · ${r.game_type === '9point' ? '9-Point' : 'Scotch'}`)
+        ),
+        h('div', { style: `font-weight:900;font-size:18px;color:${amtColor};font-feature-settings:"tnum";` }, amtText)
+      );
+    })
+  ));
+}
+
+// ==================== LIFETIME STATS SCREEN ====================
+let statsCache = null;
+let h2hCache = null;
+async function loadStats() {
+  if (!SupabaseClient || !SupabaseClient.isConfigured() || !state.authUser) return;
+  statsCache = await SupabaseClient.getMyStats();
+  h2hCache = await SupabaseClient.getHeadToHead();
+  render();
+}
+function renderStats() {
+  root.appendChild(h('div', { class: 'header' },
+    h('div', { class: 'header-row' },
+      h('button', { class: 'back-btn', onclick: () => { state.screen = 'account'; render(); } }, '← Back'),
+      h('h1', null, 'LIFETIME STATS'),
+      h('span', { style: 'width:50px;' })
+    )
+  ));
+  if (!state.authUser) {
+    root.appendChild(h('div', { class: 'card' }, h('div', { class: 'empty' }, 'Sign in to see your stats.')));
+    return;
+  }
+  if (statsCache === null) {
+    root.appendChild(h('div', { class: 'card' }, h('div', { class: 'empty' }, 'Loading…')));
+    loadStats();
+    return;
+  }
+  const s = statsCache;
+  const netColor = s.netTotal > 0 ? 'var(--green-light)' : s.netTotal < 0 ? 'var(--team-b)' : 'var(--muted)';
+  root.appendChild(h('div', { class: 'result-banner' },
+    h('div', { class: 'label' }, 'Lifetime Net'),
+    h('div', { class: 'amount', style: `color:${s.netTotal < 0 ? '#ffb3ad' : 'white'};` },
+      s.netTotal === 0 ? 'Even' : s.netTotal > 0 ? `+$${s.netTotal}` : `−$${Math.abs(s.netTotal)}`
+    )
+  ));
+  root.appendChild(h('div', { class: 'card' },
+    h('h2', null, 'Totals'),
+    h('table', { class: 'totals-table' },
+      h('tbody', null,
+        h('tr', null, h('td', null, 'Rounds played'), h('td', null, String(s.roundsPlayed))),
+        h('tr', null, h('td', null, 'Wins'), h('td', { class: 'team-a' }, String(s.wins))),
+        h('tr', null, h('td', null, 'Losses'), h('td', { class: 'team-b' }, String(s.losses))),
+        h('tr', null, h('td', null, 'Ties'), h('td', null, String(s.ties))),
+        h('tr', null, h('td', null, 'Total won'), h('td', null, `$${s.totalWon}`)),
+        h('tr', null, h('td', null, 'Total lost'), h('td', null, `$${s.totalLost}`))
+      )
+    )
+  ));
+  const courses = Object.entries(s.byCourse).sort((a, b) => b[1].rounds - a[1].rounds);
+  if (courses.length > 0) {
+    root.appendChild(h('div', { class: 'card' },
+      h('h2', null, 'By Course'),
+      h('table', { class: 'totals-table' },
+        h('thead', null, h('tr', null,
+          h('th', null, 'Course'),
+          h('th', null, 'Rounds'),
+          h('th', null, 'Net')
+        )),
+        h('tbody', null,
+          ...courses.map(([name, c]) => h('tr', null,
+            h('td', { style: 'text-align:left;font-size:12px;' }, name),
+            h('td', null, String(c.rounds)),
+            h('td', { class: c.net > 0 ? 'team-a' : c.net < 0 ? 'team-b' : '' },
+              c.net === 0 ? '—' : c.net > 0 ? `+$${c.net}` : `−$${Math.abs(c.net)}`)
+          ))
+        )
+      )
+    ));
+  }
+}
+
 // ---------- Init ----------
-function init() {
+async function init() {
   load();
-  // Seed a default course if none exist
   if (!state.courses || state.courses.length === 0) {
     state.courses = COURSE_PRESETS.map(courseFromPreset);
   }
   render();
+
+  // Initialize Supabase if credentials are set
+  if (typeof SupabaseClient !== 'undefined') {
+    SupabaseClient.onAuthChange((user, profile) => {
+      state.authUser = user;
+      state.authProfile = profile;
+      save();
+      render();
+    });
+    try {
+      await SupabaseClient.init();
+    } catch (e) {
+      console.warn('Supabase init failed:', e);
+    }
+  }
 }
 
 init();
