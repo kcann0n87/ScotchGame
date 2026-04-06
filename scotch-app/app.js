@@ -711,7 +711,7 @@ function renderNewRound() {
         onclick: () => {
           newRoundDraft.mode = '5man';
           if (newRoundDraft.players.length < 5) {
-            newRoundDraft.players.push({ id: uid(), name: '', handicap: '', team: 'A', stake: 'full', swing: true, tees: '', userId: null, invitedEmail: null });
+            newRoundDraft.players.push({ id: uid(), name: '', handicap: '', team: 'A', stake: 'full', swing: false, tees: '', userId: null, invitedEmail: null });
           }
           render();
         }
@@ -1215,15 +1215,14 @@ function renderRound() {
     if (!seg) return null;
     return seg.points.find(p => p.h === holeIdx) || null;
   }
-  const tNames = teamLabels(r);
-  function topBottomRow(label, entry) {
+  function topBottomRow(label, entry, names) {
     if (!entry) return null;
     const aWin = entry.a > entry.b;
     const bWin = entry.b > entry.a;
     const labelEl = aWin
-      ? h('span', { class: 'tb-result team-a' }, `${tNames.a} +${entry.a - entry.b}`)
+      ? h('span', { class: 'tb-result team-a' }, `${names.a} +${entry.a - entry.b}`)
       : bWin
-        ? h('span', { class: 'tb-result team-b' }, `${tNames.b} +${entry.b - entry.a}`)
+        ? h('span', { class: 'tb-result team-b' }, `${names.b} +${entry.b - entry.a}`)
         : h('span', { class: 'tb-result tied' }, 'Tied');
     return h('div', { class: 'tb-row' },
       h('span', { class: 'tb-label' }, label),
@@ -1232,9 +1231,9 @@ function renderRound() {
   }
 
   const holeGames = result.mode === '5man'
-    ? [{ label: 'Game 1', hp: result.game1.points[hIdx], sub: result.game1 },
-       { label: 'Game 2', hp: result.game2.points[hIdx], sub: result.game2 }]
-    : [{ label: null, hp: result.points[hIdx], sub: result }];
+    ? [{ label: 'Game 1', hp: result.game1.points[hIdx], sub: result.game1, subRound: result.sub1 },
+       { label: 'Game 2', hp: result.game2.points[hIdx], sub: result.game2, subRound: result.sub2 }]
+    : [{ label: null, hp: result.points[hIdx], sub: result, subRound: null }];
 
   for (const g of holeGames) {
     const hp = g.hp;
@@ -1257,7 +1256,8 @@ function renderRound() {
     const topEntry    = holePointsIn(g.sub.top, hIdx);
     const bottomEntry = holePointsIn(g.sub.bottom, hIdx);
 
-    const tl = teamLabels(r);
+    // In 5-man, show only the 2 players actually in this sub-game
+    const tl = g.subRound ? teamLabels(g.subRound) : teamLabels(r);
     root.appendChild(h('div', { class: 'card' },
       h('h2', null, g.label ? `${g.label} — Hole Points` : 'Hole Points'),
       h('div', { style: 'display:flex;justify-content:space-around;text-align:center;padding:8px 0;' },
@@ -1275,8 +1275,8 @@ function renderRound() {
         : null,
       // Top & Bottom game hole results
       h('div', { class: 'tb-summary' },
-        topBottomRow('Top Game', topEntry),
-        topBottomRow('Bottom Game', bottomEntry)
+        topBottomRow('Top Game', topEntry, tl),
+        topBottomRow('Bottom Game', bottomEntry, tl)
       )
     ));
   }
@@ -1390,20 +1390,24 @@ function renderSummary() {
 
   // Render points / top / bottom — differs by mode
   const gameViews = result.mode === '5man'
-    ? [{ label: 'Game 1', pts: result.game1, diffs: settlement.diffs.game1 },
-       { label: 'Game 2', pts: result.game2, diffs: settlement.diffs.game2 }]
-    : [{ label: null, pts: result, diffs: settlement.diffs }];
+    ? [{ label: 'Game 1', pts: result.game1, subRound: result.sub1 },
+       { label: 'Game 2', pts: result.game2, subRound: result.sub2 }]
+    : [{ label: null, pts: result, subRound: null }];
 
   for (const gv of gameViews) {
+    // In 5-man, use the sub-round (2 players per team) for labels
+    const displayRound = gv.subRound || r;
     if (gv.label) {
+      const gl = teamLabels(displayRound);
       root.appendChild(h('div', { class: 'card', style: 'background:var(--green-dark);color:white;padding:10px 16px;' },
-        h('div', { style: 'font-size:11px;text-transform:uppercase;letter-spacing:1px;opacity:0.7;' }, gv.label)
+        h('div', { style: 'font-size:11px;text-transform:uppercase;letter-spacing:1px;opacity:0.7;' }, gv.label),
+        h('div', { style: 'font-size:13px;margin-top:4px;opacity:0.9;' }, `${gl.a} vs ${gl.b}`)
       ));
     }
-    root.appendChild(renderTopGameCard(gv.pts, r));
-    root.appendChild(renderMiddleGameCard(gv.pts, r));
-    root.appendChild(renderBottomGameCard(gv.pts, r));
-    root.appendChild(renderPerHoleAllGames(gv.pts, r, gv.label));
+    root.appendChild(renderTopGameCard(gv.pts, displayRound));
+    root.appendChild(renderMiddleGameCard(gv.pts, displayRound));
+    root.appendChild(renderBottomGameCard(gv.pts, displayRound));
+    root.appendChild(renderPerHoleAllGames(gv.pts, displayRound, gv.label));
   }
 
   // Action split (5-man only)
