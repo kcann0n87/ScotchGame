@@ -626,16 +626,30 @@ function renderCourseEdit() {
 let newRoundDraft = null;
 function ensureDraft() {
   if (!newRoundDraft) {
+    // Pre-fill Player 1 with the logged-in user's profile
+    const me = state.authProfile;
+    const myUser = state.authUser;
+    const p1 = {
+      id: uid(),
+      name: me ? me.display_name : '',
+      handicap: me ? (me.handicap ?? '') : '',
+      team: 'A',
+      stake: 'full',
+      swing: false,
+      tees: '',
+      userId: myUser ? myUser.id : null,
+      invitedEmail: null
+    };
     newRoundDraft = {
       courseId: state.courses[0] ? state.courses[0].id : null,
       mode: '4man',
       playhouse: false,
       startNine: 'front',
-      gameType: 'scotch',   // 4-man type
-      gameType1: 'scotch',  // 5-man: game 1 type
-      gameType2: 'scotch',  // 5-man: game 2 type
+      gameType: 'scotch',
+      gameType1: 'scotch',
+      gameType2: 'scotch',
       players: [
-        { id: uid(), name: '', handicap: '', team: 'A', stake: 'full', swing: false, tees: '', userId: null, invitedEmail: null },
+        p1,
         { id: uid(), name: '', handicap: '', team: 'B', stake: 'full', swing: false, tees: '', userId: null, invitedEmail: null },
         { id: uid(), name: '', handicap: '', team: 'A', stake: 'full', swing: false, tees: '', userId: null, invitedEmail: null },
         { id: uid(), name: '', handicap: '', team: 'B', stake: 'full', swing: false, tees: '', userId: null, invitedEmail: null },
