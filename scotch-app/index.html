@@ -3172,29 +3172,59 @@ function renderNewRound() {
               : null;
         const linkedBadge = p.userId
           ? h('span', { class: 'link-badge linked' }, '★ Linked')
-          : p.invitedEmail
-            ? h('span', { class: 'link-badge invited' }, '✉ Invited')
-            : null;
+          : null;
+        // Build autocomplete suggestions based on typed name
+        const nameVal = p.name || '';
+        const isCloud = state.authUser && typeof SupabaseClient !== 'undefined' && SupabaseClient.isConfigured();
+        const alreadyLinked = new Set(newRoundDraft.players.filter((x, xi) => xi !== i && x.userId).map(x => x.userId));
+        let suggestions = [];
+        if (isCloud && nameVal.length >= 1 && !p.userId && state._allProfiles) {
+          suggestions = state._allProfiles
+            .filter(pr => pr.display_name.toLowerCase().includes(nameVal.toLowerCase()) && !alreadyLinked.has(pr.id))
+            .slice(0, 5);
+        }
+        // Load all profiles once for autocomplete
+        if (isCloud && !state._allProfiles && !state._profilesLoading) {
+          state._profilesLoading = true;
+          SupabaseClient.searchUsersByName('').then(data => {
+            state._allProfiles = data || [];
+            state._profilesLoading = false;
+            render(true);
+          });
+        }
         return h('div', { class: `player-card team-${p.team.toLowerCase()}` },
           h('div', { class: 'info' },
-            h('div', { class: 'field' },
-              h('label', null, `Player ${i+1} Name${p.swing ? ' • SWING' : ''}`, badge ? ' ' : '', badge, linkedBadge ? ' ' : '', linkedBadge),
-            h('div', { style: 'display:flex;gap:6px;' },
-              h('input', { type: 'text', value: p.name || '', placeholder: `Player ${i+1}`,
-                style: 'flex:1;',
-                oninput: e => { p.name = e.target.value; } }),
-              state.authUser && SupabaseClient && SupabaseClient.isConfigured()
-                ? h('button', { class: 'btn secondary btn-sm', style: 'width:auto;padding:10px 12px;',
-                    onclick: () => {
-                      state.playerPickerIndex = i;
-                      state.playerPickerQuery = '';
-                      state.playerPickerResults = null;
-                      state._pickerAutoLoaded = false;
-                      render();
-                    }}, p.userId || p.invitedEmail ? 'Change' : 'Link')
-                : null
-            )
-          ),
+            h('div', { class: 'field', style: 'position:relative;' },
+              h('label', null, `Player ${i+1}${p.swing ? ' • SWING' : ''}`, badge ? ' ' : '', badge, linkedBadge ? ' ' : '', linkedBadge),
+              p.userId
+                ? h('div', { style: 'display:flex;gap:6px;align-items:center;' },
+                    h('div', { style: 'flex:1;padding:12px 14px;background:var(--green-soft);border-radius:var(--radius);font-weight:700;font-size:15px;color:var(--green-dark);' }, p.name),
+                    h('button', { class: 'btn secondary btn-sm', style: 'width:auto;padding:8px 12px;font-size:11px;',
+                      onclick: () => { p.userId = null; p.name = ''; p.handicap = ''; render(true); }
+                    }, '✕')
+                  )
+                : h('div', null,
+                    h('input', { type: 'text', value: nameVal, placeholder: `Player ${i+1}`,
+                      oninput: e => { p.name = e.target.value; render(true); }
+                    }),
+                    suggestions.length > 0
+                      ? h('div', { style: 'position:absolute;left:0;right:0;top:100%;z-index:50;background:white;border:1px solid var(--border);border-radius:0 0 var(--radius) var(--radius);box-shadow:var(--shadow-md);max-height:200px;overflow-y:auto;' },
+                          ...suggestions.map(s => h('div', {
+                            style: 'padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border-light);font-size:14px;',
+                            onclick: () => {
+                              p.name = s.display_name;
+                              p.userId = s.id;
+                              p.handicap = s.handicap || 0;
+                              render(true);
+                            }
+                          },
+                            h('strong', null, s.display_name),
+                            h('span', { style: 'color:var(--muted);margin-left:8px;font-size:12px;' }, `Hcp ${s.handicap ?? 0}`)
+                          ))
+                        )
+                      : null
+                  )
+            ),
           h('div', { class: 'field-row' },
             h('div', { class: 'field', style: 'flex:0 0 70px;' },
               h('label', null, 'Handicap'),
