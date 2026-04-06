@@ -5,6 +5,34 @@ const Admin = (() => {
 const SUPABASE_URL = 'https://sgflclztmzodywtrwndd.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNnZmxjbHp0bXpvZHl3dHJ3bmRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU0MjczNjYsImV4cCI6MjA5MTAwMzM2Nn0.MrgGoIB8lvkaAdD2SAbh805JviYRfRBBmt3iHghrIdo';
 
+// Course presets with tee ratings (same data as mobile app)
+const COURSES = [
+  { name: 'Bear Lakes CC - Lakes', tees: [
+    { name: 'Blue', rating: 73.2 }, { name: 'White', rating: 71.0 }, { name: 'Gold', rating: 68.5 }
+  ]},
+  { name: 'Panther National', tees: [
+    { name: 'Blue', rating: 74.5 }, { name: 'White', rating: 72.0 }, { name: 'Gold', rating: 69.8 }
+  ]},
+  { name: 'Boca Rio GC', tees: [
+    { name: 'Blue', rating: 74.6 }, { name: 'White', rating: 70.7 }, { name: 'Gold', rating: 67.2 }
+  ]},
+  { name: 'Mizner CC', tees: [
+    { name: 'Blue', rating: 74.2 }, { name: 'White', rating: 71.8 }, { name: 'Gold', rating: 69.0 }
+  ]},
+  { name: 'Boca Grove', tees: [
+    { name: 'Blue', rating: 72.0 }, { name: 'White', rating: 70.0 }, { name: 'Gold', rating: 67.5 }
+  ]},
+  { name: 'Delaire CC - Lakes/Hills', tees: [
+    { name: 'Blue', rating: 73.0 }, { name: 'White', rating: 70.5 }, { name: 'Gold', rating: 68.0 }
+  ]},
+  { name: 'Delaire CC - Hills/Woods', tees: [
+    { name: 'Blue', rating: 73.0 }, { name: 'White', rating: 70.5 }, { name: 'Gold', rating: 68.0 }
+  ]},
+  { name: 'Delaire CC - Woods/Lakes', tees: [
+    { name: 'Blue', rating: 73.0 }, { name: 'White', rating: 70.5 }, { name: 'Gold', rating: 68.0 }
+  ]}
+];
+
 let db = null;
 let user = null;
 let profile = null;
@@ -433,12 +461,12 @@ let roundEntry = null;
 function initRoundEntry() {
   roundEntry = {
     date: new Date().toISOString().split('T')[0],
-    course: '',
+    course: COURSES[0] ? COURSES[0].name : '',
     players: [
-      { profileId: '', tee: '', rating: '', gross: '', amount: '' },
-      { profileId: '', tee: '', rating: '', gross: '', amount: '' },
-      { profileId: '', tee: '', rating: '', gross: '', amount: '' },
-      { profileId: '', tee: '', rating: '', gross: '', amount: '' },
+      { profileId: '', tee: '', gross: '', amount: '' },
+      { profileId: '', tee: '', gross: '', amount: '' },
+      { profileId: '', tee: '', gross: '', amount: '' },
+      { profileId: '', tee: '', gross: '', amount: '' },
     ]
   };
 }
@@ -452,7 +480,7 @@ function renderEnterRound(app) {
     h('div', { style: 'font-size:12px;color:var(--muted);margin-bottom:14px;' },
       'Manually enter a completed round. This creates round records for handicap calculation and updates the money ledger.'),
 
-    // Date + Course
+    // Date + Course dropdown
     h('div', { style: 'display:flex;gap:12px;margin-bottom:16px;' },
       h('div', { class: 'field', style: 'flex:1;' },
         h('label', null, 'Date'),
@@ -460,45 +488,81 @@ function renderEnterRound(app) {
       ),
       h('div', { class: 'field', style: 'flex:2;' },
         h('label', null, 'Course'),
-        h('input', { type: 'text', value: re.course, placeholder: 'Bear Lakes CC', oninput: e => { re.course = e.target.value; } })
+        h('select', { style: 'width:100%;', onchange: e => {
+          re.course = e.target.value;
+          // Reset tees for all players when course changes
+          const tees = getCourseTees(re.course);
+          re.players.forEach(p => { p.tee = tees[0] ? tees[0].name : ''; });
+          render();
+        } },
+          h('option', { value: '' }, '-- Select Course --'),
+          ...COURSES.map(c =>
+            h('option', { value: c.name, ...(re.course === c.name ? { selected: 'selected' } : {}) }, c.name)
+          ),
+          h('option', { value: '__other__' }, 'Other (type manually)')
+        ),
+        re.course === '__other__'
+          ? h('input', { type: 'text', placeholder: 'Course name', style: 'margin-top:6px;',
+              oninput: e => { re.customCourse = e.target.value; } })
+          : null
       )
     ),
 
     // Player rows
-    h('table', null,
-      h('thead', null, h('tr', null,
-        h('th', null, '#'),
-        h('th', null, 'Player'),
-        h('th', null, 'Tee'),
-        h('th', null, 'Rating'),
-        h('th', null, 'Gross'),
-        h('th', null, 'Win/Lose ($)')
-      )),
-      h('tbody', null,
-        ...re.players.map((p, i) =>
-          h('tr', null,
-            h('td', null, String(i + 1)),
-            h('td', null,
-              h('select', { style: 'width:100%;', value: p.profileId, onchange: e => { p.profileId = e.target.value; } },
-                h('option', { value: '' }, '— Select —'),
-                ...allProfiles.map(pr =>
-                  h('option', { value: pr.id, ...(p.profileId === pr.id ? { selected: 'selected' } : {}) }, pr.display_name)
+    (() => {
+      const courseTees = getCourseTees(re.course);
+      const isCustomCourse = !COURSES.find(c => c.name === re.course);
+      return h('table', null,
+        h('thead', null, h('tr', null,
+          h('th', null, '#'),
+          h('th', null, 'Player'),
+          h('th', null, 'Tee'),
+          h('th', null, 'Rating'),
+          h('th', null, 'Gross'),
+          h('th', null, 'Win/Lose ($)')
+        )),
+        h('tbody', null,
+          ...re.players.map((p, i) => {
+            const teeRating = getTeeRating(re.course, p.tee);
+            return h('tr', null,
+              h('td', null, String(i + 1)),
+              h('td', null,
+                h('select', { style: 'width:100%;', value: p.profileId, onchange: e => { p.profileId = e.target.value; } },
+                  h('option', { value: '' }, '-- Select --'),
+                  ...allProfiles.map(pr =>
+                    h('option', { value: pr.id, ...(p.profileId === pr.id ? { selected: 'selected' } : {}) }, pr.display_name)
+                  )
                 )
-              )
-            ),
-            h('td', null, h('input', { type: 'text', value: p.tee, placeholder: 'Blue', style: 'width:70px;', oninput: e => { p.tee = e.target.value; } })),
-            h('td', null, h('input', { type: 'number', value: p.rating, placeholder: '72.5', step: '0.1', style: 'width:70px;', oninput: e => { p.rating = e.target.value; } })),
-            h('td', null, h('input', { type: 'number', value: p.gross, placeholder: '82', style: 'width:60px;', oninput: e => { p.gross = e.target.value; } })),
-            h('td', null, h('input', { type: 'number', value: p.amount, placeholder: '+200 or -150', style: 'width:100px;', oninput: e => { p.amount = e.target.value; } }))
-          )
+              ),
+              h('td', null,
+                courseTees.length > 0
+                  ? h('select', { style: 'width:80px;', onchange: e => { p.tee = e.target.value; render(); } },
+                      ...courseTees.map(t =>
+                        h('option', { value: t.name, ...(p.tee === t.name ? { selected: 'selected' } : {}) }, t.name)
+                      )
+                    )
+                  : h('input', { type: 'text', value: p.tee || '', placeholder: 'Blue', style: 'width:70px;',
+                      oninput: e => { p.tee = e.target.value; } })
+              ),
+              h('td', { style: 'font-weight:700;color:var(--green-dark);' },
+                teeRating != null ? String(teeRating) : (isCustomCourse
+                  ? h('input', { type: 'number', value: p.manualRating || '', placeholder: '72.5', step: '0.1', style: 'width:70px;',
+                      oninput: e => { p.manualRating = e.target.value; } })
+                  : '—')
+              ),
+              h('td', null, h('input', { type: 'number', value: p.gross, placeholder: '82', style: 'width:60px;', oninput: e => { p.gross = e.target.value; } })),
+              h('td', null, h('input', { type: 'number', value: p.amount, placeholder: '+200', style: 'width:100px;', oninput: e => { p.amount = e.target.value; } }))
+            );
+          })
         )
-      )
-    ),
+      );
+    })(),
 
     // Add/remove player buttons
     h('div', { style: 'display:flex;gap:8px;margin-top:12px;' },
       h('button', { class: 'btn sm secondary', onclick: () => {
-        re.players.push({ profileId: '', tee: '', rating: '', gross: '', amount: '' });
+        const tees = getCourseTees(re.course);
+        re.players.push({ profileId: '', tee: tees[0] ? tees[0].name : '', gross: '', amount: '' });
         render();
       } }, '+ Add Player'),
       re.players.length > 2
@@ -519,7 +583,8 @@ function renderEnterRound(app) {
 
 async function saveEnteredRound() {
   const re = roundEntry;
-  if (!re.course.trim()) { alert('Enter a course name'); return; }
+  const courseName = re.course === '__other__' ? (re.customCourse || '').trim() : re.course.trim();
+  if (!courseName) { alert('Select a course'); return; }
   const validPlayers = re.players.filter(p => p.profileId && p.gross);
   if (validPlayers.length < 2) { alert('Enter at least 2 players with scores'); return; }
 
@@ -541,15 +606,17 @@ async function saveEnteredRound() {
   });
 
   const tees = [...new Set(validPlayers.map(p => p.tee || 'Manual'))].map(name => {
+    const knownRating = getTeeRating(courseName, name);
     const player = validPlayers.find(p => (p.tee || 'Manual') === name);
-    return { name, rating: player ? parseFloat(player.rating) || null : null, si: null };
+    const manualRating = player ? parseFloat(player.manualRating) || null : null;
+    return { name, rating: knownRating || manualRating, si: null };
   });
 
   const roundData = {
     teamA: playerObjects,
     teamB: [],
     course: {
-      name: re.course.trim(),
+      name: courseName,
       tees,
       holes: Array(18).fill(null).map((_, i) => ({ par: 4, si: i + 1 }))
     }
@@ -558,7 +625,7 @@ async function saveEnteredRound() {
   // Save round
   const { data: roundRow, error } = await db.from('rounds').insert({
     scorer_id: user.id,
-    course_name: re.course.trim(),
+    course_name: courseName,
     played_at: re.date + 'T12:00:00Z',
     mode: 'manual',
     game_type: 'manual',
@@ -585,7 +652,7 @@ async function saveEnteredRound() {
   const { error: rpError } = await db.from('round_players').insert(rpRows);
   if (rpError) { alert('Error saving players: ' + rpError.message); return; }
 
-  alert(`Round saved! ${validPlayers.length} players at ${re.course.trim()}`);
+  alert(`Round saved! ${validPlayers.length} players at ${courseName}`);
   initRoundEntry();
   allRounds = null;
   allRoundPlayers = null;
@@ -649,6 +716,16 @@ let manualCourse = '';
 let manualTee = '';
 let manualRating = '';
 let manualGross = '';
+
+function getCourseTees(courseName) {
+  const c = COURSES.find(x => x.name === courseName);
+  return c ? c.tees : [];
+}
+function getTeeRating(courseName, teeName) {
+  const tees = getCourseTees(courseName);
+  const t = tees.find(x => x.name === teeName);
+  return t ? t.rating : null;
+}
 
 async function saveManualRound() {
   if (!manualPlayerId || !manualGross || !manualRating || !manualCourse) {
