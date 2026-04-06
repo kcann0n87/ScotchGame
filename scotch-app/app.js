@@ -350,13 +350,6 @@ function renderHome() {
   );
   root.appendChild(hero);
 
-  const menu = h('div', { class: 'card' },
-    h('h2', null, 'Courses'),
-    h('button', { class: 'btn secondary', onclick: () => { state.screen = 'courses'; render(); } },
-      `Manage Courses (${state.courses.length})`)
-  );
-  root.appendChild(menu);
-
   // Account / sign-in card
   const isCloudOn = typeof SupabaseClient !== 'undefined' && SupabaseClient.isConfigured();
   const accountCard = h('div', { class: 'card' },
@@ -377,39 +370,6 @@ function renderHome() {
         )
   );
   root.appendChild(accountCard);
-
-  const rules = h('div', { class: 'card' },
-    h('h2', null, 'Rules Reference'),
-    h('div', { class: 'rules-panel' },
-      h('div', { class: 'rule-group' },
-        h('strong', null, 'Scotch: '), 'Low 3 • Total 3 • CTP 2 • Birdie 4 • Keep 1 • Take 2 • Polie 1',
-        h('br'),
-        h('strong', null, 'Blitz: '), 'Low+Total+CTP+Birdie → birdie becomes 1, total doubles'
-      ),
-      h('div', { class: 'rule-group' },
-        h('strong', null, '9-Point: '), 'Low 3 • Total 3 • High Ball 3 • Keep 1 • Take 2',
-        h('br'),
-        h('strong', null, 'Blitz: '), 'Low+Total+High Ball → total doubles'
-      ),
-      h('div', { class: 'rule-group' },
-        h('strong', null, 'Roll: '), 'Trailing team can press hole to 2x. Leader can re-roll to 3x. Middle game only. Stacks on blitz.'
-      ),
-      h('div', { class: 'rule-group' },
-        h('strong', null, 'Top Game: '), 'Low + Total, auto-press at 4-down',
-        h('br'),
-        h('strong', null, 'Bottom Game: '), 'Net Nassau, auto-press at 2-down, auto back 9 press',
-        h('br'),
-        h('strong', null, 'Presses: '), 'Run until end of current nine'
-      ),
-      h('div', { class: 'rule-group' },
-        h('strong', null, 'Stakes: '), 'Per-player full ($100) or half ($50). Mixed pairs settle at lower stake.'
-      ),
-      h('div', { class: 'rule-group' },
-        h('strong', null, 'Individual: '), 'Each pair also plays a net Nassau (front/back/total) at flat stake per segment.'
-      )
-    )
-  );
-  root.appendChild(rules);
 }
 
 // ---------- Courses screen ----------
