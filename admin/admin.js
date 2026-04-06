@@ -7,30 +7,54 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 // Course presets with tee ratings (same data as mobile app)
 const COURSES = [
-  { name: 'Bear Lakes CC - Lakes', tees: [
-    { name: 'Blue', rating: 73.2 }, { name: 'White', rating: 71.0 }, { name: 'Gold', rating: 68.5 }
-  ]},
-  { name: 'Panther National', tees: [
-    { name: 'Blue', rating: 74.5 }, { name: 'White', rating: 72.0 }, { name: 'Gold', rating: 69.8 }
-  ]},
-  { name: 'Boca Rio GC', tees: [
-    { name: 'Blue', rating: 74.6 }, { name: 'White', rating: 70.7 }, { name: 'Gold', rating: 67.2 }
-  ]},
-  { name: 'Mizner CC', tees: [
-    { name: 'Blue', rating: 74.2 }, { name: 'White', rating: 71.8 }, { name: 'Gold', rating: 69.0 }
-  ]},
-  { name: 'Boca Grove', tees: [
-    { name: 'Blue', rating: 72.0 }, { name: 'White', rating: 70.0 }, { name: 'Gold', rating: 67.5 }
-  ]},
-  { name: 'Delaire CC - Lakes/Hills', tees: [
-    { name: 'Blue', rating: 73.0 }, { name: 'White', rating: 70.5 }, { name: 'Gold', rating: 68.0 }
-  ]},
-  { name: 'Delaire CC - Hills/Woods', tees: [
-    { name: 'Blue', rating: 73.0 }, { name: 'White', rating: 70.5 }, { name: 'Gold', rating: 68.0 }
-  ]},
-  { name: 'Delaire CC - Woods/Lakes', tees: [
-    { name: 'Blue', rating: 73.0 }, { name: 'White', rating: 70.5 }, { name: 'Gold', rating: 68.0 }
-  ]}
+  { name: 'Bear Lakes CC - Lakes',
+    pars: [4,3,5,4,4,5,4,3,4, 4,3,5,4,3,4,4,4,5],
+    si:   [13,15,11,3,7,9,1,17,5, 6,18,14,4,16,2,10,12,8],
+    tees: [
+      { name: 'Gold', rating: 76.7 }, { name: 'Blue', rating: 72.6 }, { name: 'White', rating: 68.7 }
+    ]},
+  { name: 'Panther National',
+    pars: [4,3,5,4,4,4,5,3,4, 4,5,4,3,4,4,3,4,5],
+    si:   [15,11,9,1,5,13,7,17,3, 10,4,8,16,2,14,18,12,6],
+    tees: [
+      { name: 'Gold', rating: 71.4 }, { name: 'Blue', rating: 68.6 }, { name: 'White', rating: 63.7 }
+    ]},
+  { name: 'Boca Rio GC',
+    pars: [5,4,3,4,4,3,4,5,4, 5,4,4,3,4,4,5,3,4],
+    si:   [11,3,17,13,7,15,1,5,9, 10,4,14,18,6,2,12,16,8],
+    tees: [
+      { name: 'Blue', rating: 73.7 }, { name: 'White', rating: 71.6 }, { name: 'Gold', rating: 67.8 }
+    ]},
+  { name: 'Mizner CC',
+    pars: [4,4,5,4,3,4,5,4,3, 4,4,4,3,4,5,5,3,4],
+    si:   [7,1,11,15,9,3,5,17,13, 16,2,4,18,8,14,10,6,12],
+    tees: [
+      { name: 'Gold', rating: 72.8 }, { name: 'Blue', rating: 71.3 }, { name: 'White', rating: 69.2 }
+    ]},
+  { name: 'Boca Grove',
+    pars: [4,5,3,4,4,4,5,3,4, 4,4,5,3,4,3,3,4,5],
+    si:   [13,5,15,1,9,17,7,11,3, 4,12,6,14,2,18,16,8,10],
+    tees: [
+      { name: 'Tour', rating: 72.7 }, { name: 'Champion', rating: 70.5 }, { name: 'Member', rating: 68.6 }, { name: 'Middle', rating: 68.0 }
+    ]},
+  { name: 'Delaire CC - Lakes/Hills',
+    pars: [4,5,4,3,4,5,3,4,4, 5,3,5,4,3,4,4,4,4],
+    si:   [11,7,3,15,9,1,17,13,5, 10,16,4,14,18,2,6,12,8],
+    tees: [
+      { name: 'Blue', rating: 71.1 }, { name: 'White', rating: 69.7 }, { name: 'Gold', rating: 66.4 }
+    ]},
+  { name: 'Delaire CC - Hills/Woods',
+    pars: [5,3,5,4,3,4,4,4,4, 4,5,3,4,5,4,3,4,4],
+    si:   [9,15,3,13,17,1,5,11,7, 4,8,16,2,12,14,18,10,6],
+    tees: [
+      { name: 'Blue', rating: 70.7 }, { name: 'White', rating: 69.3 }, { name: 'Gold', rating: 66.3 }
+    ]},
+  { name: 'Delaire CC - Woods/Lakes',
+    pars: [4,5,3,4,5,4,3,4,4, 4,5,4,3,4,5,3,4,4],
+    si:   [3,7,15,1,11,13,17,9,5, 12,8,4,16,10,2,18,14,6],
+    tees: [
+      { name: 'Blue', rating: 71.0 }, { name: 'White', rating: 69.6 }, { name: 'Gold', rating: 66.1 }
+    ]}
 ];
 
 let db = null;
