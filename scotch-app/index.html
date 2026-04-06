@@ -2679,24 +2679,29 @@ function h(tag, attrs, ...children) {
   return el;
 }
 
-function render() {
+function render(preserveScroll) {
+  const scrollY = window.scrollY;
   root.innerHTML = '';
-  root.classList.remove('screen-fade');
-  void root.offsetWidth;
-  root.classList.add('screen-fade');
+  if (!preserveScroll) {
+    root.classList.remove('screen-fade');
+    void root.offsetWidth;
+    root.classList.add('screen-fade');
+  }
   save();
-  if (state.screen === 'home') return renderHome();
-  if (state.screen === 'newRound') return renderNewRound();
-  if (state.screen === 'courses') return renderCourses();
-  if (state.screen === 'courseEdit') return renderCourseEdit();
-  if (state.screen === 'round') return renderRound();
-  if (state.screen === 'summary') return renderSummary();
-  if (state.screen === 'login') return renderLogin();
-  if (state.screen === 'account') return renderAccount();
-  if (state.screen === 'history') return renderHistory();
-  if (state.screen === 'stats') return renderStats();
-  if (state.screen === 'friends') return renderFriends();
-  if (state.screen === 'liveView') return renderLiveView();
+  if (state.screen === 'home') renderHome();
+  else if (state.screen === 'newRound') renderNewRound();
+  else if (state.screen === 'courses') renderCourses();
+  else if (state.screen === 'courseEdit') renderCourseEdit();
+  else if (state.screen === 'round') renderRound();
+  else if (state.screen === 'summary') renderSummary();
+  else if (state.screen === 'login') renderLogin();
+  else if (state.screen === 'account') renderAccount();
+  else if (state.screen === 'history') renderHistory();
+  else if (state.screen === 'stats') renderStats();
+  else if (state.screen === 'friends') renderFriends();
+  else if (state.screen === 'liveView') renderLiveView();
+  // Restore scroll position when re-rendering the same screen
+  if (preserveScroll) requestAnimationFrame(() => window.scrollTo(0, scrollY));
 }
 
 // ---------- Home screen ----------
@@ -3372,9 +3377,24 @@ function renderRound() {
     )
   ));
 
+  // Compute running tally through current hole
+  const runA = (result.mode === '5man'
+    ? result.game1.pointsTotal.a + result.game2.pointsTotal.a
+    : result.pointsTotal.a) || 0;
+  const runB = (result.mode === '5man'
+    ? result.game1.pointsTotal.b + result.game2.pointsTotal.b
+    : result.pointsTotal.b) || 0;
+  const tally = teamLabels(r);
+  const tallyText = runA === runB ? 'Even'
+    : runA > runB ? `${tally.a} +${runA - runB}`
+    : `${tally.b} +${runB - runA}`;
+  const tallyColor = runA > runB ? 'var(--team-a)' : runB > runA ? 'var(--team-b)' : 'rgba(255,255,255,0.7)';
+
   // Hole header
   root.appendChild(h('div', { class: 'hole-header' },
     h('div', { class: 'hole-number' }, String(hIdx + 1)),
+    h('div', { style: 'font-size:13px;font-weight:700;color:rgba(255,255,255,0.85);margin-top:4px;letter-spacing:0.5px;' },
+      `${runA} – ${runB}`),
     h('div', { class: 'hole-info' },
       h('span', null, 'PAR ', h('strong', null, String(hole.par))),
       h('span', null, 'HCP ', h('strong', null, String(hole.si)))
@@ -3412,7 +3432,7 @@ function renderRound() {
               ...choices.map(c =>
                 h('div', {
                   class: `toggle ${currentChoice === c.key ? 'active' : ''}`,
-                  onclick: () => { r.indyBackChoice[pr.key] = c.key; save(); render(); }
+                  onclick: () => { r.indyBackChoice[pr.key] = c.key; save(); render(true); }
                 },
                   c.label,
                   h('br'),
@@ -3466,9 +3486,9 @@ function renderRound() {
         'Doubles this hole\'s middle-game points (declared before the hole).'),
       h('div', { class: 'toggle-group' },
         h('div', { class: `toggle ${!holeData.playhoused ? 'active' : ''}`,
-          onclick: () => { holeData.playhoused = false; render(); } }, 'Normal'),
+          onclick: () => { holeData.playhoused = false; render(true); } }, 'Normal'),
         h('div', { class: `toggle ${holeData.playhoused ? 'active' : ''}`,
-          onclick: () => { holeData.playhoused = true; render(); } }, '🏠 Playhouse ×2')
+          onclick: () => { holeData.playhoused = true; render(true); } }, '🏠 Playhouse ×2')
       )
     ));
   }
@@ -3494,27 +3514,27 @@ function renderRound() {
       cardChildren.push(
         h('div', { class: 'toggle-group' },
           h('div', { class: `toggle team-a ${holeData[ck] === 'A' ? 'active' : ''}`,
-            onclick: () => { holeData[ck] = holeData[ck] === 'A' ? null : 'A'; render(); }
+            onclick: () => { holeData[ck] = holeData[ck] === 'A' ? null : 'A'; render(true); }
           }, 'Team A'),
           h('div', { class: `toggle team-b ${holeData[ck] === 'B' ? 'active' : ''}`,
-            onclick: () => { holeData[ck] = holeData[ck] === 'B' ? null : 'B'; render(); }
+            onclick: () => { holeData[ck] = holeData[ck] === 'B' ? null : 'B'; render(true); }
           }, 'Team B'),
           h('div', { class: `toggle ${holeData[ck] === 'NONE' ? 'active' : ''}`,
-            onclick: () => { holeData[ck] = holeData[ck] === 'NONE' ? null : 'NONE'; render(); }
+            onclick: () => { holeData[ck] = holeData[ck] === 'NONE' ? null : 'NONE'; render(true); }
           }, 'None')
         ),
-        (holeData[ck] === 'NONE' || holeData[ck] === null)
+        (holeData[ck] === 'NONE')
           ? h('div', null,
               h('h3', null, 'Polie (no one hit green in reg)'),
               h('div', { class: 'toggle-group' },
                 h('div', { class: `toggle team-a ${holeData[pk] === 'A' ? 'active' : ''}`,
-                  onclick: () => { holeData[pk] = holeData[pk] === 'A' ? null : 'A'; render(); }
+                  onclick: () => { holeData[pk] = holeData[pk] === 'A' ? null : 'A'; render(true); }
                 }, 'Team A'),
                 h('div', { class: `toggle team-b ${holeData[pk] === 'B' ? 'active' : ''}`,
-                  onclick: () => { holeData[pk] = holeData[pk] === 'B' ? null : 'B'; render(); }
+                  onclick: () => { holeData[pk] = holeData[pk] === 'B' ? null : 'B'; render(true); }
                 }, 'Team B'),
                 h('div', { class: `toggle ${holeData[pk] == null ? 'active' : ''}`,
-                  onclick: () => { holeData[pk] = null; render(); }
+                  onclick: () => { holeData[pk] = null; render(true); }
                 }, 'None')
               )
             )
@@ -3531,13 +3551,13 @@ function renderRound() {
       h('h3', null, 'Roll'),
       h('div', { class: 'toggle-group' },
         h('div', { class: `toggle ${(holeData[rk] || 1) === 1 ? 'active' : ''}`,
-          onclick: () => { holeData[rk] = 1; render(); }
+          onclick: () => { holeData[rk] = 1; render(true); }
         }, '1x'),
         h('div', { class: `toggle ${holeData[rk] === 2 ? 'active' : ''}`,
-          onclick: () => { holeData[rk] = 2; render(); }
+          onclick: () => { holeData[rk] = 2; render(true); }
         }, '2x Roll'),
         h('div', { class: `toggle ${holeData[rk] === 3 ? 'active' : ''}`,
-          onclick: () => { holeData[rk] = 3; render(); }
+          onclick: () => { holeData[rk] = 3; render(true); }
         }, '3x Re-roll')
       )
     );
@@ -3621,6 +3641,13 @@ function renderRound() {
     ));
   }
 
+  // Running game tally
+  root.appendChild(h('div', { style: 'text-align:center;padding:8px 14px;margin:0 14px;background:var(--card);border-radius:var(--radius);border:1px solid var(--border-light);font-size:13px;font-weight:700;' },
+    h('span', { style: `color:${tallyColor};` }, `Middle: ${runA} – ${runB}`),
+    h('span', { style: 'color:var(--muted);margin:0 8px;' }, '·'),
+    h('span', { style: 'color:var(--muted);' }, tallyText)
+  ));
+
   // Bottom nav — respects startNine play order
   // Play order: front-first = 0..17 normal; back-first = 9..17 then 0..8
   const playOrder = r.startNine === 'back'
@@ -3635,7 +3662,7 @@ function renderRound() {
     }, ...(isFirst ? { disabled: 'true' } : {}) }, '← Prev'),
     h('button', { class: 'btn btn-sm', onclick: () => {
       if (!isLast) { state.currentHoleIdx = playOrder[playPos + 1]; render(); }
-      else { state.screen = 'summary'; render(); }
+      else { state.round.roundComplete = true; state.screen = 'summary'; render(); }
     }}, isLast ? 'Finish' : 'Next →')
   );
   root.appendChild(nav);
@@ -3658,14 +3685,14 @@ function renderScoreRow(player, hIdx, round, team) {
         const par = round.course.holes[hIdx].par;
         const cur = player.scores[hIdx] == null ? par : player.scores[hIdx];
         player.scores[hIdx] = Math.max(1, cur - 1);
-        render();
+        render(true);
       }}, '−'),
       h('div', { class: 'val' }, String(val == null ? round.course.holes[hIdx].par : val)),
       h('button', { onclick: () => {
         const par = round.course.holes[hIdx].par;
         const cur = player.scores[hIdx] == null ? par : player.scores[hIdx];
         player.scores[hIdx] = cur + 1;
-        render();
+        render(true);
       }}, '+')
     )
   );
@@ -3678,8 +3705,8 @@ function renderSummary() {
   const result = Scoring.computeRound(r);
   const settlement = Scoring.settle(r, result);
 
-  // Cloud sync: save round once, if signed in and not already saved
-  if (!r.cloudSavedId && typeof SupabaseClient !== 'undefined' && SupabaseClient.isConfigured() && state.authUser) {
+  // Cloud sync: only save when round is complete (came from Finish button, not mid-round Σ)
+  if (!r.cloudSavedId && r.roundComplete && typeof SupabaseClient !== 'undefined' && SupabaseClient.isConfigured() && state.authUser) {
     r.cloudSavedId = 'pending';
     SupabaseClient.saveRound(r, { ...settlement, perPlayer: settlement.perPlayer })
       .then(row => {
