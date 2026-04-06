@@ -3,6 +3,7 @@ import os
 d = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(d, 'style.css')) as f: css = f.read()
 with open(os.path.join(d, 'scoring.js')) as f: scoring = f.read()
+with open(os.path.join(d, 'supabase-lib.js')) as f: supabase_lib = f.read()
 with open(os.path.join(d, 'supabase.js')) as f: supabase_js = f.read()
 with open(os.path.join(d, 'app.js')) as f: app = f.read()
 
@@ -14,14 +15,16 @@ html = f"""<!DOCTYPE html>
 <meta name="theme-color" content="#0a5d2e" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <title>Scotch Golf</title>
-<!-- Supabase JS client (loaded from CDN; only used if credentials are set) -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
 {css}
 </style>
 </head>
 <body>
 <div id="app"></div>
+<script>
+// Supabase JS v2 UMD (inlined — no CDN dependency)
+{supabase_lib}
+</script>
 <script>
 {scoring}
 </script>
