@@ -766,21 +766,11 @@ function renderNewRound() {
   // Players
   const is5 = newRoundDraft.mode === '5man';
 
-  // Auto-assign swing: first player on the 3-man team is always the swing player
-  if (is5) {
-    // Clear all swing flags first
-    newRoundDraft.players.forEach(p => p.swing = false);
-    const teamA = newRoundDraft.players.filter(p => p.team === 'A');
-    const teamB = newRoundDraft.players.filter(p => p.team === 'B');
-    const bigTeam = teamA.length >= 3 ? teamA : (teamB.length >= 3 ? teamB : null);
-    if (bigTeam && bigTeam[0]) bigTeam[0].swing = true;
-  }
-
   const playersCard = h('div', { class: 'card' },
     h('h2', null, 'Players'),
     h('div', { style: 'font-size:12px;color:var(--muted);margin-bottom:10px;' },
       is5
-        ? 'Player 1 on the 3-man team is the swing (plays both games). Action splits by stake shares (full=2, half=1).'
+        ? 'Tap a player on the 3-man team to make them the swing. Action splits by stake shares (full=2, half=1).'
         : 'Each player picks full or half stake. Mixed pairings settle at the lower stake.'),
     ...(() => {
       // Compute Game 1 / Game 2 assignment for 5-man mode.
@@ -790,8 +780,8 @@ function renderNewRound() {
         const teamB = newRoundDraft.players.filter(p => p.team === 'B');
         const bigTeam  = teamA.length === 3 ? teamA : (teamB.length === 3 ? teamB : null);
         if (bigTeam) {
-          const swing = bigTeam[0]; // First player on 3-man team = swing
-          const nonSwings = bigTeam.slice(1);
+          const swing = bigTeam.find(p => p.swing);
+          const nonSwings = bigTeam.filter(p => !p.swing);
           if (nonSwings[0]) gameLabel[nonSwings[0].id] = 'G1';
           if (nonSwings[1]) gameLabel[nonSwings[1].id] = 'G2';
           if (swing) gameLabel[swing.id] = 'BOTH';
@@ -896,7 +886,23 @@ function renderNewRound() {
               );
             })()
           ),
-          null
+          // Swing toggle: only on 5-man, only for 3-man team members
+          is5 && (() => {
+            const teamA = newRoundDraft.players.filter(x => x.team === 'A');
+            const teamB = newRoundDraft.players.filter(x => x.team === 'B');
+            const bigTeam = teamA.length === 3 ? teamA : (teamB.length === 3 ? teamB : null);
+            const isOnBigTeam = bigTeam && bigTeam.some(x => x.id === p.id);
+            if (!isOnBigTeam) return null;
+            return h('button', {
+              class: `btn btn-sm ${p.swing ? 'gold' : 'secondary'}`,
+              style: 'margin-top:8px;width:100%;',
+              onclick: () => {
+                newRoundDraft.players.forEach(x => x.swing = false);
+                p.swing = true;
+                render();
+              }
+            }, p.swing ? '★ SWING (plays both games)' : 'Make Swing');
+          })()
         )
       );
       });
@@ -919,7 +925,8 @@ function renderNewRound() {
         if (!(teamA.length === 3 && teamB.length === 2) && !(teamA.length === 2 && teamB.length === 3)) {
           alert('5-man mode needs a 3-man team and a 2-man team'); return;
         }
-        // Swing is auto-assigned to first player on 3-man team (done above in render)
+        const bigTeam = teamA.length === 3 ? newRoundDraft.players.filter(p=>p.team==='A') : newRoundDraft.players.filter(p=>p.team==='B');
+        if (!bigTeam.some(p => p.swing)) { alert('Tap a player on the 3-man team to make them the swing'); return; }
       }
       // Coerce empty handicaps to 0 and empty names to "Player N"
       newRoundDraft.players.forEach((p, i) => {
