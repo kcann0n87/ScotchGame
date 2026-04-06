@@ -475,12 +475,134 @@ function renderDashboard(app) {
   app.appendChild(card);
 }
 
+// ==================== MANUAL ROUND ENTRY ====================
+let showManualRound = false;
+let manualPlayerId = '';
+let manualDate = '';
+let manualCourse = '';
+let manualTee = '';
+let manualRating = '';
+let manualGross = '';
+
+async function saveManualRound() {
+  if (!manualPlayerId || !manualGross || !manualRating || !manualCourse) {
+    alert('Fill in player, course, rating, and gross score');
+    return;
+  }
+  const player = allProfiles.find(p => p.id === manualPlayerId);
+  if (!player) { alert('Player not found'); return; }
+  const gross = parseInt(manualGross);
+  const rating = parseFloat(manualRating);
+  if (isNaN(gross) || isNaN(rating)) { alert('Invalid score or rating'); return; }
+  const date = manualDate || new Date().toISOString().split('T')[0];
+
+  // Build a minimal round data blob that the handicap engine can parse
+  const fakeScores = Array(18).fill(Math.round(gross / 18));
+  // Adjust first hole to make sum exact
+  fakeScores[0] += gross - fakeScores.reduce((s, v) => s + v, 0);
+
+  const roundData = {
+    teamA: [{
+      name: player.display_name,
+      scores: fakeScores,
+      teesName: manualTee || 'Manual',
+      handicap: player.handicap || 0,
+      team: 'A',
+      stake: 'full'
+    }],
+    teamB: [],
+    course: {
+      name: manualCourse,
+      tees: [{ name: manualTee || 'Manual', rating: rating, si: null }],
+      holes: fakeScores.map((p, i) => ({ par: 4, si: i + 1 }))
+    }
+  };
+
+  const { data: roundRow, error } = await db.from('rounds').insert({
+    scorer_id: user.id,
+    course_name: manualCourse,
+    played_at: date + 'T12:00:00Z',
+    mode: 'manual',
+    game_type: 'manual',
+    data: roundData,
+    settlement: { perPlayer: {} }
+  }).select().single();
+
+  if (error) { alert('Error saving round: ' + error.message); return; }
+
+  // Insert round_player row
+  await db.from('round_players').insert({
+    round_id: roundRow.id,
+    user_id: player.id,
+    display_name: player.display_name,
+    team: 'A',
+    stake: 'full',
+    handicap: player.handicap || 0,
+    final_amount: 0
+  });
+
+  alert('Round saved!');
+  showManualRound = false;
+  allRounds = null;
+  allRoundPlayers = null;
+  handicapResults = null;
+  await loadAllData();
+}
+
 // ==================== HANDICAPS TAB ====================
 function renderHandicaps(app) {
   if (!handicapResults) computeAllHandicaps();
   const results = handicapResults;
 
+  // Manual round entry
   app.appendChild(h('div', { class: 'card', style: 'margin-top:16px;' },
+    h('h2', null, 'Enter Historical Round'),
+    h('div', { style: 'font-size:12px;color:var(--muted);margin-bottom:10px;' },
+      'Manually add a past round for handicap calculation. Use this to transfer data from your old sheet.'),
+    !showManualRound
+      ? h('button', { class: 'btn secondary', onclick: () => { showManualRound = true; manualPlayerId = ''; manualDate = ''; manualCourse = ''; manualTee = ''; manualRating = ''; manualGross = ''; render(); } }, '+ Add Historical Round')
+      : h('div', null,
+          h('div', { style: 'display:flex;gap:10px;' },
+            h('div', { class: 'field', style: 'flex:2;' },
+              h('label', null, 'Player'),
+              h('select', { onchange: e => { manualPlayerId = e.target.value; } },
+                h('option', { value: '' }, '— Select —'),
+                ...allProfiles.map(p => h('option', { value: p.id }, p.display_name))
+              )
+            ),
+            h('div', { class: 'field', style: 'flex:1;' },
+              h('label', null, 'Date'),
+              h('input', { type: 'date', oninput: e => { manualDate = e.target.value; } })
+            )
+          ),
+          h('div', { style: 'display:flex;gap:10px;' },
+            h('div', { class: 'field', style: 'flex:2;' },
+              h('label', null, 'Course'),
+              h('input', { type: 'text', placeholder: 'Bear Lakes CC', oninput: e => { manualCourse = e.target.value; } })
+            ),
+            h('div', { class: 'field', style: 'flex:1;' },
+              h('label', null, 'Tee'),
+              h('input', { type: 'text', placeholder: 'Blue', oninput: e => { manualTee = e.target.value; } })
+            )
+          ),
+          h('div', { style: 'display:flex;gap:10px;' },
+            h('div', { class: 'field', style: 'flex:1;' },
+              h('label', null, 'Course Rating'),
+              h('input', { type: 'number', step: '0.1', placeholder: '72.5', oninput: e => { manualRating = e.target.value; } })
+            ),
+            h('div', { class: 'field', style: 'flex:1;' },
+              h('label', null, 'Gross Score'),
+              h('input', { type: 'number', placeholder: '82', oninput: e => { manualGross = e.target.value; } })
+            )
+          ),
+          h('div', { style: 'display:flex;gap:8px;margin-top:8px;' },
+            h('button', { class: 'btn', onclick: saveManualRound }, 'Save Round'),
+            h('button', { class: 'btn secondary', onclick: () => { showManualRound = false; render(); } }, 'Cancel')
+          )
+        )
+  ));
+
+  app.appendChild(h('div', { class: 'card' },
     h('h2', null, 'Handicap Calculator'),
     h('div', { style: 'display:flex;gap:10px;align-items:center;margin-bottom:16px;' },
       h('button', { class: 'btn', onclick: () => { computeAllHandicaps(); render(); } }, 'Recalculate All'),
