@@ -2651,20 +2651,15 @@ function renderFriends() {
 
 // ==================== PLAYER PICKER MODAL (round setup) ====================
 async function runPlayerPickerSearch(query) {
-  state.playerPickerQuery = query;
-  if (!query || query.trim().length < 2) {
-    state.playerPickerResults = null;
-    render();
-    return;
-  }
+  state.playerPickerQuery = query || '';
   if (!SupabaseClient || !SupabaseClient.isConfigured()) return;
-  const results = await SupabaseClient.searchUsersByName(query.trim());
+  // Search all users (empty query returns all)
+  const results = await SupabaseClient.searchUsersByName(query || '');
   const myId = state.authUser ? state.authUser.id : null;
-  // Also dedupe against players already linked in this draft
   const alreadyLinked = new Set(
     (newRoundDraft?.players || []).map(p => p.userId).filter(Boolean)
   );
-  state.playerPickerResults = results.filter(r => r.id !== myId && !alreadyLinked.has(r.id));
+  state.playerPickerResults = (results || []).filter(r => r.id !== myId && !alreadyLinked.has(r.id));
   render();
 }
 
@@ -2677,6 +2672,7 @@ function renderPlayerPickerModal() {
     state.playerPickerIndex = null;
     state.playerPickerQuery = '';
     state.playerPickerResults = null;
+    state._pickerAutoLoaded = false;
     render();
   };
 
@@ -2713,26 +2709,15 @@ function renderPlayerPickerModal() {
                 }
               })
             ),
-            // Auto-load all users on first open if no query yet
+            // Auto-load all users on first open
             (() => {
-              if (!query && !state.playerPickerResults && !state._pickerAutoLoaded) {
+              if (!state._pickerAutoLoaded) {
                 state._pickerAutoLoaded = true;
-                runPlayerPickerSearch(''); // loads all users
-                // Actually need to fetch all - let's do a broad search
-                (async () => {
-                  if (typeof SupabaseClient !== 'undefined' && SupabaseClient.isConfigured()) {
-                    state.playerPickerResults = await SupabaseClient.searchUsersByName('');
-                    // Filter out self and already-linked
-                    const myId = state.authUser ? state.authUser.id : null;
-                    const alreadyLinked = new Set((newRoundDraft?.players || []).map(p => p.userId).filter(Boolean));
-                    state.playerPickerResults = (state.playerPickerResults || []).filter(r => r.id !== myId && !alreadyLinked.has(r.id));
-                    render();
-                  }
-                })();
+                runPlayerPickerSearch('');
               }
               return null;
             })(),
-            // Show results (either search results or auto-loaded all users)
+            // Show results
             state.playerPickerResults && state.playerPickerResults.length > 0
               ? h('div', null,
                   h('h3', null, query ? 'Search Results' : 'All Players'),
