@@ -3377,13 +3377,28 @@ function renderRound() {
     )
   ));
 
-  // Compute running tally through current hole
-  const runA = (result.mode === '5man'
-    ? result.game1.pointsTotal.a + result.game2.pointsTotal.a
-    : result.pointsTotal.a) || 0;
-  const runB = (result.mode === '5man'
-    ? result.game1.pointsTotal.b + result.game2.pointsTotal.b
-    : result.pointsTotal.b) || 0;
+  // Compute running tally — only count holes up to current one in play order
+  const playedHoles = (r.startNine === 'back'
+    ? [9,10,11,12,13,14,15,16,17, 0,1,2,3,4,5,6,7,8]
+    : [0,1,2,3,4,5,6,7,8, 9,10,11,12,13,14,15,16,17]
+  ).slice(0, (r.startNine === 'back'
+    ? [9,10,11,12,13,14,15,16,17,0,1,2,3,4,5,6,7,8]
+    : [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17]
+  ).indexOf(hIdx) + 1);
+  function sumPlayedPoints(pts) {
+    let a = 0, b = 0;
+    for (const hi of playedHoles) {
+      const p = pts.points[hi];
+      if (p) { a += p.a; b += p.b; }
+    }
+    return { a, b };
+  }
+  const runTotals = result.mode === '5man'
+    ? { a: sumPlayedPoints(result.game1).a + sumPlayedPoints(result.game2).a,
+        b: sumPlayedPoints(result.game1).b + sumPlayedPoints(result.game2).b }
+    : sumPlayedPoints(result);
+  const runA = runTotals.a;
+  const runB = runTotals.b;
   const tally = teamLabels(r);
   const tallyText = runA === runB ? 'Even'
     : runA > runB ? `${tally.a} +${runA - runB}`
