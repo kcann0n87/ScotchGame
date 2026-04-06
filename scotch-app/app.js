@@ -2404,7 +2404,7 @@ function renderAccount() {
   if (!statsCache && typeof SupabaseClient !== 'undefined' && SupabaseClient.isConfigured()) {
     loadStats();
   }
-  const balance = statsCache ? statsCache.netTotal : null;
+  const balance = statsCache ? (statsCache.ledgerBalance ?? statsCache.netTotal) : null;
   const balColor = balance > 0 ? 'var(--green-light)' : balance < 0 ? 'var(--team-b)' : 'var(--muted)';
   const balText = balance == null ? '' : balance === 0 ? '$0' : balance > 0 ? `+$${balance}` : `-$${Math.abs(balance)}`;
 

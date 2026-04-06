@@ -320,10 +320,14 @@ const SupabaseClient = (() => {
 
   async function getMyStats() {
     if (!_client || !_user) return null;
-    const { data: playerRows } = await _client
-      .from('round_players')
-      .select('round_id, final_amount, rounds(mode, game_type, course_name)')
-      .eq('user_id', _user.id);
+    const [{ data: playerRows }, { data: paymentRows }] = await Promise.all([
+      _client.from('round_players')
+        .select('round_id, final_amount, rounds(mode, game_type, course_name)')
+        .eq('user_id', _user.id),
+      _client.from('payments')
+        .select('amount')
+        .eq('user_id', _user.id)
+    ]);
     const rows = playerRows || [];
     const stats = {
       roundsPlayed: rows.length,
@@ -333,7 +337,8 @@ const SupabaseClient = (() => {
       wins: 0,
       losses: 0,
       ties: 0,
-      byCourse: {}
+      byCourse: {},
+      paymentsTotal: 0
     };
     for (const r of rows) {
       const amt = r.final_amount || 0;
@@ -346,6 +351,11 @@ const SupabaseClient = (() => {
       stats.byCourse[course].rounds++;
       stats.byCourse[course].net += amt;
     }
+    // Add payments (settlements) to get ledger balance
+    for (const p of (paymentRows || [])) {
+      stats.paymentsTotal += (p.amount || 0);
+    }
+    stats.ledgerBalance = stats.netTotal + stats.paymentsTotal;
     return stats;
   }
 
