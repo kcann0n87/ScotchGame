@@ -809,7 +809,7 @@ function renderNewRound() {
                       state.playerPickerIndex = i;
                       state.playerPickerQuery = '';
                       state.playerPickerResults = null;
-                      if (state.friendsList === null) loadFriends();
+                      state._pickerAutoLoaded = false;
                       render();
                     }}, p.userId || p.invitedEmail ? 'Change' : 'Link')
                 : null
@@ -2322,8 +2322,6 @@ function renderAccount() {
       onclick: () => { state.screen = 'history'; render(); } }, 'Round History'),
     h('button', { class: 'btn secondary', style: 'margin-top:8px;',
       onclick: () => { state.screen = 'stats'; render(); } }, 'Lifetime Stats'),
-    h('button', { class: 'btn secondary', style: 'margin-top:8px;',
-      onclick: () => { state.screen = 'friends'; render(); } }, 'Friends'),
     h('button', { class: 'btn danger', style: 'margin-top:16px;', onclick: async () => {
       await SupabaseClient.signOut();
       state.screen = 'home';
@@ -2685,11 +2683,6 @@ function renderPlayerPickerModal() {
   };
 
   const query = state.playerPickerQuery || '';
-  const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(query.trim());
-  const friends = state.friendsList || [];
-  const friendMatches = query
-    ? friends.filter(f => f.display_name.toLowerCase().includes(query.toLowerCase()))
-    : friends;
 
   return h('div', { class: 'modal-backdrop', onclick: (e) => { if (e.target === e.currentTarget) close(); } },
     h('div', { class: 'modal-card' },
@@ -2704,14 +2697,14 @@ function renderPlayerPickerModal() {
               h('input', {
                 type: 'text',
                 value: query,
-                placeholder: 'Type a name or email…',
+                placeholder: 'Type to filter…',
                 oninput: e => {
                   state.playerPickerQuery = e.target.value;
                   runPlayerPickerSearch(e.target.value);
                 }
               })
             ),
-            // Auto-load all users on first open
+            // Auto-load all players on first open
             (() => {
               if (!state._pickerAutoLoaded) {
                 state._pickerAutoLoaded = true;
@@ -2719,11 +2712,10 @@ function renderPlayerPickerModal() {
               }
               return null;
             })(),
-            // Show results
+            // Show all players
             state.playerPickerResults && state.playerPickerResults.length > 0
               ? h('div', null,
-                  h('h3', null, query ? 'Search Results' : 'All Players'),
-                  ...state.playerPickerResults.slice(0, 10).map(u => h('div', { class: 'list-item',
+                  ...state.playerPickerResults.map(u => h('div', { class: 'list-item',
                     onclick: () => apply({ name: u.display_name, userId: u.id, invitedEmail: null, handicap: u.handicap || 0 })
                   },
                     h('div', null,
@@ -2733,16 +2725,10 @@ function renderPlayerPickerModal() {
                     h('span', { class: 'tag a' }, 'Link')
                   ))
                 )
-              : null,
-            // Invite by email
-            looksLikeEmail
-              ? h('button', { class: 'btn', style: 'margin-top:12px;', onclick: () => {
-                  apply({ name: query.split('@')[0], userId: null, invitedEmail: query.trim() });
-                } }, `Invite ${query.trim()}`)
-              : null
+              : (state._pickerAutoLoaded ? h('div', { style: 'color:var(--muted);padding:12px;text-align:center;' }, 'No players found.') : null)
           )
-        : h('div', { class: 'warning' }, 'Sign in to link real users.'),
-      h('h3', { style: 'margin-top:14px;' }, 'Or as Guest'),
+        : h('div', { class: 'warning' }, 'Sign in to link players.'),
+      h('h3', { style: 'margin-top:14px;' }, 'Or enter as Guest'),
       h('div', { class: 'field' },
         h('input', {
           type: 'text',

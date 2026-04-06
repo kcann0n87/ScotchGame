@@ -165,7 +165,7 @@ const SupabaseClient = (() => {
   async function searchUsersByName(query) {
     if (!_client) return [];
     try {
-      let q = _client.from('profiles').select('id, display_name, email, handicap').limit(30);
+      let q = _client.from('profiles').select('id, display_name, email, handicap').order('display_name').limit(100);
       if (query && query.trim()) {
         const s = query.trim().replace(/'/g, "''"); // escape single quotes
         q = q.or(`display_name.ilike.%${s}%,email.ilike.%${s}%`);
