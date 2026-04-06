@@ -658,7 +658,16 @@ function renderCourses(app) {
           if (isEditing) {
             // Initialize edit state
             if (!c._editName) c._editName = c.name;
-            if (!c._editTees) c._editTees = (c.tees || []).map(t => ({ ...t, si: t.si ? [...t.si] : null }));
+            if (!c._editTees) c._editTees = (c.tees || []).map(t => {
+              // Only keep si if it has real overrides (not just sequential 1-18 or copy of default)
+              let si = null;
+              if (t.si && Array.isArray(t.si)) {
+                const isSequential = t.si.every((v, idx) => v === idx + 1);
+                const isDefaultCopy = c.si && t.si.every((v, idx) => v === c.si[idx]);
+                if (!isSequential && !isDefaultCopy) si = [...t.si];
+              }
+              return { ...t, si };
+            });
             if (!c._editPars) c._editPars = c.pars ? [...c.pars] : Array(18).fill(4);
             if (!c._editSi) c._editSi = c.si ? [...c.si] : Array(18).fill(0).map((_, i) => i + 1);
 
