@@ -1323,17 +1323,25 @@ function renderRound() {
 
     // In 5-man, show only the 2 players actually in this sub-game
     const tl = g.subRound ? teamLabels(g.subRound) : teamLabels(r);
+    // Only show the winning team's points (or "Tied" if even)
+    const winnerName = winner === 'A' ? tl.a : winner === 'B' ? tl.b : null;
+    const winnerPts = winner === 'A' ? hp.a : winner === 'B' ? hp.b : 0;
+    const winnerColor = winner === 'A' ? 'var(--team-a)' : winner === 'B' ? 'var(--team-b)' : 'var(--muted)';
+
     root.appendChild(h('div', { class: 'card' },
       h('h2', null, g.label ? `${g.label} — Hole Points` : 'Hole Points'),
-      h('div', { style: 'display:flex;justify-content:space-around;text-align:center;padding:8px 0;' },
-        h('div', null,
-          h('div', { style: 'font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;' }, tl.a),
-          h('div', { style: `font-size:36px;font-weight:900;color:${winner==='A'?'var(--team-a)':'var(--muted)'};font-feature-settings:"tnum";` }, String(hp.a))
-        ),
-        h('div', null,
-          h('div', { style: 'font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;' }, tl.b),
-          h('div', { style: `font-size:36px;font-weight:900;color:${winner==='B'?'var(--team-b)':'var(--muted)'};font-feature-settings:"tnum";` }, String(hp.b))
-        )
+      h('div', { style: 'text-align:center;padding:8px 0;' },
+        hp.a === 0 && hp.b === 0
+          ? h('div', { style: 'font-size:18px;font-weight:700;color:var(--muted);' }, 'No points scored')
+          : winner === 'T'
+            ? h('div', null,
+                h('div', { style: 'font-size:14px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:1px;' }, 'Tied'),
+                h('div', { style: 'font-size:36px;font-weight:900;color:var(--muted);font-feature-settings:"tnum";' }, String(hp.a))
+              )
+            : h('div', null,
+                h('div', { style: `font-size:14px;color:${winnerColor};font-weight:700;text-transform:uppercase;letter-spacing:1px;` }, winnerName),
+                h('div', { style: `font-size:48px;font-weight:900;color:${winnerColor};font-feature-settings:"tnum";` }, `+${winnerPts}`)
+              )
       ),
       chips.length > 0
         ? h('div', { style: 'font-size:11px;color:var(--muted);text-align:center;margin-top:4px;line-height:1.5;' }, chips.join(' • '))
