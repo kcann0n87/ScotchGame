@@ -2106,13 +2106,12 @@ const SupabaseClient = (() => {
 
   // ---------- Friends / player search ----------
   async function searchUsersByName(query) {
-    if (!_client || !query) return [];
-    // Search by name OR email
-    const { data, error } = await _client
-      .from('profiles')
-      .select('id, display_name, email, handicap')
-      .or(`display_name.ilike.%${query}%,email.ilike.%${query}%`)
-      .limit(20);
+    if (!_client) return [];
+    let q = _client.from('profiles').select('id, display_name, email, handicap').limit(30);
+    if (query && query.trim()) {
+      q = q.or(`display_name.ilike.%${query.trim()}%,email.ilike.%${query.trim()}%`);
+    }
+    const { data, error } = await q;
     if (error) console.warn('searchUsersByName error:', error);
     return data || [];
   }
@@ -4646,6 +4645,28 @@ function renderAccount() {
     ));
     return;
   }
+  // Check if display name needs to be set (magic link / Google users)
+  const needsName = profile && (!profile.display_name || profile.display_name === user.email.split('@')[0]);
+  if (needsName) {
+    let newName = profile.display_name || '';
+    root.appendChild(h('div', { class: 'card', style: 'border:2px solid var(--gold);' },
+      h('h2', null, 'Set Your Display Name'),
+      h('div', { style: 'font-size:13px;color:var(--muted);margin-bottom:10px;' },
+        'Please enter your full name so other players can find and link you.'),
+      h('div', { class: 'field' },
+        h('label', null, 'Display Name'),
+        h('input', { type: 'text', value: newName, placeholder: 'e.g. Kyle Cannon',
+          oninput: e => { newName = e.target.value; } })
+      ),
+      h('button', { class: 'btn gold', onclick: async () => {
+        if (!newName || !newName.trim()) { alert('Please enter a name'); return; }
+        await SupabaseClient.updateProfile({ display_name: newName.trim() });
+        render();
+      }}, 'Save Name')
+    ));
+    return;
+  }
+
   root.appendChild(h('div', { class: 'card' },
     h('h2', null, 'Profile'),
     h('div', { style: 'font-size:16px;font-weight:700;' }, profile?.display_name || user.email),
@@ -5037,33 +5058,40 @@ function renderPlayerPickerModal() {
       state.authUser
         ? h('div', null,
             h('div', { class: 'field' },
-              h('label', null, 'Search friends or all users'),
+              h('label', null, 'Search by name or email'),
               h('input', {
                 type: 'text',
                 value: query,
                 placeholder: 'Type a name or email…',
-                oninput: e => { runPlayerPickerSearch(e.target.value); }
+                oninput: e => {
+                  state.playerPickerQuery = e.target.value;
+                  runPlayerPickerSearch(e.target.value);
+                }
               })
             ),
-            // Friends matches
-            friendMatches.length > 0 && !(state.playerPickerResults && state.playerPickerResults.length > 0)
-              ? h('div', null,
-                  h('h3', null, 'My Friends'),
-                  ...friendMatches.slice(0, 6).map(f => h('div', { class: 'list-item',
-                    onclick: () => apply({ name: f.display_name, userId: f.id, invitedEmail: null, handicap: f.handicap || 0 })
-                  },
-                    h('div', null,
-                      h('div', { class: 'main' }, f.display_name),
-                      h('div', { class: 'sub' }, `Hcp ${f.handicap ?? 0}`)
-                    ),
-                    h('span', { class: 'tag a' }, 'Link')
-                  ))
-                )
-              : null,
-            // Search results
+            // Auto-load all users on first open if no query yet
+            (() => {
+              if (!query && !state.playerPickerResults && !state._pickerAutoLoaded) {
+                state._pickerAutoLoaded = true;
+                runPlayerPickerSearch(''); // loads all users
+                // Actually need to fetch all - let's do a broad search
+                (async () => {
+                  if (typeof SupabaseClient !== 'undefined' && SupabaseClient.isConfigured()) {
+                    state.playerPickerResults = await SupabaseClient.searchUsersByName('');
+                    // Filter out self and already-linked
+                    const myId = state.authUser ? state.authUser.id : null;
+                    const alreadyLinked = new Set((newRoundDraft?.players || []).map(p => p.userId).filter(Boolean));
+                    state.playerPickerResults = (state.playerPickerResults || []).filter(r => r.id !== myId && !alreadyLinked.has(r.id));
+                    render();
+                  }
+                })();
+              }
+              return null;
+            })(),
+            // Show results (either search results or auto-loaded all users)
             state.playerPickerResults && state.playerPickerResults.length > 0
               ? h('div', null,
-                  h('h3', null, 'All Users'),
+                  h('h3', null, query ? 'Search Results' : 'All Players'),
                   ...state.playerPickerResults.slice(0, 10).map(u => h('div', { class: 'list-item',
                     onclick: () => apply({ name: u.display_name, userId: u.id, invitedEmail: null, handicap: u.handicap || 0 })
                   },

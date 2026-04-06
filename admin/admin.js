@@ -264,13 +264,14 @@ function render() {
 
   // Tabs
   const tabs = h('div', { class: 'tabs' },
-    ...['dashboard', 'handicaps', 'ledger'].map(t =>
+    ...['dashboard', 'players', 'handicaps', 'ledger'].map(t =>
       h('div', { class: `tab ${activeTab === t ? 'active' : ''}`, onclick: () => { activeTab = t; selectedPlayerId = null; render(); } }, t)
     )
   );
   app.appendChild(tabs);
 
   if (activeTab === 'dashboard') renderDashboard(app);
+  else if (activeTab === 'players') renderPlayers(app);
   else if (activeTab === 'handicaps') renderHandicaps(app);
   else if (activeTab === 'ledger') renderLedger(app);
 
@@ -304,6 +305,70 @@ function renderAccessDenied() {
       h('p', null, 'Your account does not have admin privileges.'),
       h('p', null, `Logged in as: ${user.email}`),
       h('button', { class: 'btn secondary', onclick: signOut }, 'Sign Out')
+    )
+  ));
+}
+
+// ==================== PLAYERS TAB ====================
+let editingProfileId = null;
+let editName = '';
+let editHandicap = '';
+let editEmail = '';
+
+function renderPlayers(app) {
+  app.appendChild(h('div', { class: 'card', style: 'margin-top:16px;' },
+    h('h2', null, 'Manage Players'),
+    h('div', { style: 'font-size:12px;color:var(--muted);margin-bottom:12px;' },
+      'Click a player to edit their display name, handicap, or email.'),
+    h('table', null,
+      h('thead', null, h('tr', null,
+        h('th', null, 'Name'),
+        h('th', null, 'Email'),
+        h('th', null, 'Handicap'),
+        h('th', null, 'Admin'),
+        h('th', null, '')
+      )),
+      h('tbody', null,
+        ...allProfiles.map(p => {
+          const isEditing = editingProfileId === p.id;
+          if (isEditing) {
+            return h('tr', { style: 'background:#fffdf5;' },
+              h('td', null, h('input', { type: 'text', value: editName, style: 'width:100%;', oninput: e => { editName = e.target.value; } })),
+              h('td', null, h('input', { type: 'email', value: editEmail, style: 'width:100%;', oninput: e => { editEmail = e.target.value; } })),
+              h('td', null, h('input', { type: 'number', value: editHandicap, style: 'width:60px;', oninput: e => { editHandicap = e.target.value; } })),
+              h('td', null, p.is_admin ? '★' : '—'),
+              h('td', null,
+                h('button', { class: 'btn sm', onclick: async () => {
+                  const patch = {};
+                  if (editName.trim() && editName.trim() !== p.display_name) patch.display_name = editName.trim();
+                  if (editHandicap !== '' && parseInt(editHandicap) !== p.handicap) patch.handicap = parseInt(editHandicap) || 0;
+                  if (editEmail.trim() && editEmail.trim() !== p.email) patch.email = editEmail.trim();
+                  if (Object.keys(patch).length > 0) {
+                    await db.from('profiles').update(patch).eq('id', p.id);
+                    Object.assign(p, patch);
+                  }
+                  editingProfileId = null;
+                  render();
+                } }, 'Save'),
+                h('button', { class: 'btn sm secondary', style: 'margin-left:4px;', onclick: () => { editingProfileId = null; render(); } }, 'Cancel')
+              )
+            );
+          }
+          return h('tr', { class: 'clickable', onclick: () => {
+            editingProfileId = p.id;
+            editName = p.display_name || '';
+            editHandicap = p.handicap != null ? String(p.handicap) : '';
+            editEmail = p.email || '';
+            render();
+          } },
+            h('td', null, h('strong', null, p.display_name || '(no name)')),
+            h('td', { style: 'font-size:12px;color:var(--muted);' }, p.email || '—'),
+            h('td', null, p.handicap != null ? String(p.handicap) : '—'),
+            h('td', null, p.is_admin ? h('span', { class: 'badge admin' }, 'Admin') : '—'),
+            h('td', { style: 'font-size:11px;color:var(--muted);' }, 'Click to edit')
+          );
+        })
+      )
     )
   ));
 }

@@ -160,13 +160,12 @@ const SupabaseClient = (() => {
 
   // ---------- Friends / player search ----------
   async function searchUsersByName(query) {
-    if (!_client || !query) return [];
-    // Search by name OR email
-    const { data, error } = await _client
-      .from('profiles')
-      .select('id, display_name, email, handicap')
-      .or(`display_name.ilike.%${query}%,email.ilike.%${query}%`)
-      .limit(20);
+    if (!_client) return [];
+    let q = _client.from('profiles').select('id, display_name, email, handicap').limit(30);
+    if (query && query.trim()) {
+      q = q.or(`display_name.ilike.%${query.trim()}%,email.ilike.%${query.trim()}%`);
+    }
+    const { data, error } = await q;
     if (error) console.warn('searchUsersByName error:', error);
     return data || [];
   }
