@@ -3472,13 +3472,13 @@ function renderRound() {
   function tallyStr(t) { return t.a === t.b ? 'Even' : t.a > t.b ? `${tally.a} +${t.a-t.b}` : `${tally.b} +${t.b-t.a}`; }
   function tallyClr(t) { return t.a > t.b ? 'var(--team-a)' : t.b > t.a ? 'var(--team-b)' : 'rgba(255,255,255,0.7)'; }
 
-  // Hole header — shows tally BEFORE this hole
+  // Hole header — shows tally BEFORE this hole (who's up, not raw scores)
   root.appendChild(h('div', { class: 'hole-header' },
     h('div', { class: 'hole-number' }, String(hIdx + 1)),
     h('div', { style: 'font-size:12px;font-weight:600;color:rgba(255,255,255,0.8);margin-top:4px;display:flex;gap:12px;justify-content:center;' },
-      h('span', null, `Mid: ${beforeMid.a}–${beforeMid.b}`),
-      h('span', null, `Top: ${beforeTop.a}–${beforeTop.b}`),
-      h('span', null, `Bot: ${beforeBot.a}–${beforeBot.b}`)
+      h('span', null, `Mid: ${tallyStr(beforeMid)}`),
+      h('span', null, `Top: ${tallyStr(beforeTop)}`),
+      h('span', null, `Bot: ${tallyStr(beforeBot)}`)
     ),
     h('div', { class: 'hole-info' },
       h('span', null, 'PAR ', h('strong', null, String(hole.par))),
@@ -3730,15 +3730,15 @@ function renderRound() {
   root.appendChild(h('div', { style: 'text-align:center;padding:10px 14px;margin:0 14px;background:var(--card);border-radius:var(--radius);border:1px solid var(--border-light);font-size:12px;font-weight:700;display:flex;justify-content:space-around;' },
     h('div', null,
       h('div', { style: 'font-size:9px;text-transform:uppercase;color:var(--muted);letter-spacing:1px;' }, 'Middle'),
-      h('div', { style: `color:${tallyClr(thruMid)};` }, `${thruMid.a} – ${thruMid.b}`)
+      h('div', { style: `color:${tallyClr(thruMid)};` }, tallyStr(thruMid))
     ),
     h('div', null,
       h('div', { style: 'font-size:9px;text-transform:uppercase;color:var(--muted);letter-spacing:1px;' }, 'Top'),
-      h('div', { style: `color:${tallyClr(thruTop)};` }, `${thruTop.a} – ${thruTop.b}`)
+      h('div', { style: `color:${tallyClr(thruTop)};` }, tallyStr(thruTop))
     ),
     h('div', null,
       h('div', { style: 'font-size:9px;text-transform:uppercase;color:var(--muted);letter-spacing:1px;' }, 'Bottom'),
-      h('div', { style: `color:${tallyClr(thruBot)};` }, `${thruBot.a} – ${thruBot.b}`)
+      h('div', { style: `color:${tallyClr(thruBot)};` }, tallyStr(thruBot))
     )
   ));
 
