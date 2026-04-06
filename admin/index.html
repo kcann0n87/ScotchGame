@@ -657,9 +657,18 @@ function renderCourses(app) {
                 h('td', null, h('input', { type: 'number', value: editSi[hole], min: 1, max: 18, style: 'width:45px;text-align:center;padding:4px;',
                   oninput: e => { editSi[hole] = parseInt(e.target.value) || 1; } })),
                 ...editTees.map(t => {
-                  if (!t.si) t.si = [...editSi]; // seed from default
-                  return h('td', null, h('input', { type: 'number', value: t.si[hole], min: 1, max: 18, style: 'width:45px;text-align:center;padding:4px;',
-                    oninput: e => { t.si[hole] = parseInt(e.target.value) || 1; } }));
+                  // Per-tee hcp: blank = uses default. Only show a value if it differs from default.
+                  const hasOverride = t.si && t.si[hole] != null && t.si[hole] !== editSi[hole];
+                  const displayVal = hasOverride ? String(t.si[hole]) : '';
+                  return h('td', null, h('input', { type: 'number', value: displayVal, min: 1, max: 18,
+                    placeholder: String(editSi[hole]),
+                    style: `width:45px;text-align:center;padding:4px;${hasOverride ? 'font-weight:700;color:var(--green-dark);' : 'color:var(--muted);'}`,
+                    oninput: e => {
+                      if (!t.si) t.si = Array(18).fill(null);
+                      const v = e.target.value;
+                      t.si[hole] = v === '' ? null : (parseInt(v) || null);
+                    }
+                  }));
                 })
               ));
             }
@@ -686,7 +695,7 @@ function renderCourses(app) {
                     h('button', { class: 'btn sm danger', style: 'width:auto;', onclick: () => { editTees.splice(i, 1); render(); } }, 'x')
                   )
                 ),
-                h('button', { class: 'btn sm secondary', style: 'margin-bottom:12px;', onclick: () => { editTees.push({ name: '', rating: null, si: [...editSi] }); render(); } }, '+ Add Tee'),
+                h('button', { class: 'btn sm secondary', style: 'margin-bottom:12px;', onclick: () => { editTees.push({ name: '', rating: null, si: Array(18).fill(null) }); render(); } }, '+ Add Tee'),
                 // Full scorecard: Par + Default Hcp + Per-tee Hcp
                 h('h3', null, 'Scorecard'),
                 h('div', { style: 'overflow-x:auto;' },
@@ -704,11 +713,18 @@ function renderCourses(app) {
                 h('div', { style: 'display:flex;gap:8px;margin-top:12px;' },
                   h('button', { class: 'btn sm', onclick: async () => {
                     const name = c._editName.trim();
-                    const tees = editTees.filter(t => t.name?.trim()).map(t => ({
-                      name: t.name.trim(),
-                      rating: t.rating,
-                      si: t.si || null
-                    }));
+                    const tees = editTees.filter(t => t.name?.trim()).map(t => {
+                      // Only store si array if at least one hole differs from default
+                      let siArr = null;
+                      if (t.si) {
+                        const hasAnyOverride = t.si.some((v, idx) => v != null && v !== editSi[idx]);
+                        if (hasAnyOverride) {
+                          // Fill nulls with default values for a complete 18-element array
+                          siArr = t.si.map((v, idx) => v != null ? v : editSi[idx]);
+                        }
+                      }
+                      return { name: t.name.trim(), rating: t.rating, si: siArr };
+                    });
                     const pars = editPars;
                     const si = editSi;
                     if (c.dbId) {
