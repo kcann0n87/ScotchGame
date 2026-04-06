@@ -1,4 +1,4 @@
-// ==================== LLOYD'S GAME ADMIN DASHBOARD ====================
+// ==================== LLOYD\u2019S GAME ADMIN DASHBOARD ====================
 const Admin = (() => {
 
 // Reuse same Supabase credentials as mobile app
@@ -261,7 +261,7 @@ function render() {
 
   // Header
   root.appendChild(h('div', { class: 'header' },
-    h('h1', null, 'LLOYD'S GAME ADMIN'),
+    h('h1', null, 'LLOYD\u2019S GAME ADMIN'),
     h('div', null,
       h('span', { class: 'user' }, profile.display_name || user.email),
       h('button', { onclick: signOut, style: 'margin-left:12px;' }, 'Sign Out')
@@ -292,7 +292,7 @@ function render() {
 function renderLogin() {
   let email = '', pw = '';
   const box = h('div', { class: 'login-box' },
-    h('h2', null, '⛳ Lloyd's Game Admin'),
+    h('h2', null, '⛳ Lloyd\u2019s Game Admin'),
     h('div', { class: 'field' },
       h('label', null, 'Email'),
       h('input', { type: 'email', placeholder: 'you@example.com', oninput: e => { email = e.target.value; } })
