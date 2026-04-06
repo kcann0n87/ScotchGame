@@ -3408,39 +3408,78 @@ function renderRound() {
     )
   ));
 
-  // Compute running tally — only count holes up to current one in play order
-  const playedHoles = (r.startNine === 'back'
+  // Compute running tallies
+  const playOrder = (r.startNine === 'back'
     ? [9,10,11,12,13,14,15,16,17, 0,1,2,3,4,5,6,7,8]
-    : [0,1,2,3,4,5,6,7,8, 9,10,11,12,13,14,15,16,17]
-  ).slice(0, (r.startNine === 'back'
-    ? [9,10,11,12,13,14,15,16,17,0,1,2,3,4,5,6,7,8]
-    : [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17]
-  ).indexOf(hIdx) + 1);
-  function sumPlayedPoints(pts) {
+    : [0,1,2,3,4,5,6,7,8, 9,10,11,12,13,14,15,16,17]);
+  const curPos = playOrder.indexOf(hIdx);
+  // BEFORE this hole (for header)
+  const holesBefore = playOrder.slice(0, curPos);
+  // INCLUDING this hole (for bottom tally)
+  const holesThrough = playOrder.slice(0, curPos + 1);
+
+  function sumHoles(pts, holes) {
     let a = 0, b = 0;
-    for (const hi of playedHoles) {
-      const p = pts.points[hi];
-      if (p) { a += p.a; b += p.b; }
+    for (const hi of holes) { const p = pts.points[hi]; if (p) { a += p.a; b += p.b; } }
+    return { a, b };
+  }
+  function sumTopHoles(topGame, holes) {
+    let a = 0, b = 0;
+    const allSegs = [...topGame.segments, ...topGame.presses];
+    for (const seg of allSegs) {
+      for (const p of seg.points) { if (holes.includes(p.h)) { a += p.a; b += p.b; } }
     }
     return { a, b };
   }
-  const runTotals = result.mode === '5man'
-    ? { a: sumPlayedPoints(result.game1).a + sumPlayedPoints(result.game2).a,
-        b: sumPlayedPoints(result.game1).b + sumPlayedPoints(result.game2).b }
-    : sumPlayedPoints(result);
-  const runA = runTotals.a;
-  const runB = runTotals.b;
-  const tally = teamLabels(r);
-  const tallyText = runA === runB ? 'Even'
-    : runA > runB ? `${tally.a} +${runA - runB}`
-    : `${tally.b} +${runB - runA}`;
-  const tallyColor = runA > runB ? 'var(--team-a)' : runB > runA ? 'var(--team-b)' : 'rgba(255,255,255,0.7)';
+  function sumBottomHoles(bottomGame, holes) {
+    let a = 0, b = 0;
+    const allSegs = [...bottomGame.segments, ...bottomGame.presses];
+    for (const seg of allSegs) {
+      for (const p of seg.points) { if (holes.includes(p.h)) { a += p.a; b += p.b; } }
+    }
+    return { a, b };
+  }
 
-  // Hole header
+  // Before current hole (header display)
+  const beforeMid = result.mode === '5man'
+    ? { a: sumHoles(result.game1, holesBefore).a + sumHoles(result.game2, holesBefore).a,
+        b: sumHoles(result.game1, holesBefore).b + sumHoles(result.game2, holesBefore).b }
+    : sumHoles(result, holesBefore);
+  const beforeTop = result.mode === '5man'
+    ? { a: sumTopHoles(result.game1.top, holesBefore).a + sumTopHoles(result.game2.top, holesBefore).a,
+        b: sumTopHoles(result.game1.top, holesBefore).b + sumTopHoles(result.game2.top, holesBefore).b }
+    : sumTopHoles(result.top, holesBefore);
+  const beforeBot = result.mode === '5man'
+    ? { a: sumBottomHoles(result.game1.bottom, holesBefore).a + sumBottomHoles(result.game2.bottom, holesBefore).a,
+        b: sumBottomHoles(result.game1.bottom, holesBefore).b + sumBottomHoles(result.game2.bottom, holesBefore).b }
+    : sumBottomHoles(result.bottom, holesBefore);
+
+  // Through current hole (bottom tally)
+  const thruMid = result.mode === '5man'
+    ? { a: sumHoles(result.game1, holesThrough).a + sumHoles(result.game2, holesThrough).a,
+        b: sumHoles(result.game1, holesThrough).b + sumHoles(result.game2, holesThrough).b }
+    : sumHoles(result, holesThrough);
+  const thruTop = result.mode === '5man'
+    ? { a: sumTopHoles(result.game1.top, holesThrough).a + sumTopHoles(result.game2.top, holesThrough).a,
+        b: sumTopHoles(result.game1.top, holesThrough).b + sumTopHoles(result.game2.top, holesThrough).b }
+    : sumTopHoles(result.top, holesThrough);
+  const thruBot = result.mode === '5man'
+    ? { a: sumBottomHoles(result.game1.bottom, holesThrough).a + sumBottomHoles(result.game2.bottom, holesThrough).a,
+        b: sumBottomHoles(result.game1.bottom, holesThrough).b + sumBottomHoles(result.game2.bottom, holesThrough).b }
+    : sumBottomHoles(result.bottom, holesThrough);
+
+  const tally = teamLabels(r);
+  function tallyStr(t) { return t.a === t.b ? 'Even' : t.a > t.b ? `${tally.a} +${t.a-t.b}` : `${tally.b} +${t.b-t.a}`; }
+  function tallyClr(t) { return t.a > t.b ? 'var(--team-a)' : t.b > t.a ? 'var(--team-b)' : 'rgba(255,255,255,0.7)'; }
+
+  // Hole header — shows tally BEFORE this hole
   root.appendChild(h('div', { class: 'hole-header' },
     h('div', { class: 'hole-number' }, String(hIdx + 1)),
-    h('div', { style: 'font-size:13px;font-weight:700;color:rgba(255,255,255,0.85);margin-top:4px;letter-spacing:0.5px;' },
-      `${runA} – ${runB}`),
+    h('div', { style: 'font-size:12px;font-weight:600;color:rgba(255,255,255,0.8);margin-top:4px;display:flex;gap:12px;justify-content:center;' },
+      h('span', null, `Mid: ${beforeMid.a}–${beforeMid.b}`),
+      h('span', null, `Top: ${beforeTop.a}–${beforeTop.b}`),
+      h('span', null, `Bot: ${beforeBot.a}–${beforeBot.b}`)
+    ),
     h('div', { class: 'hole-info' },
       h('span', null, 'PAR ', h('strong', null, String(hole.par))),
       h('span', null, 'HCP ', h('strong', null, String(hole.si)))
@@ -3687,11 +3726,20 @@ function renderRound() {
     ));
   }
 
-  // Running game tally
-  root.appendChild(h('div', { style: 'text-align:center;padding:8px 14px;margin:0 14px;background:var(--card);border-radius:var(--radius);border:1px solid var(--border-light);font-size:13px;font-weight:700;' },
-    h('span', { style: `color:${tallyColor};` }, `Middle: ${runA} – ${runB}`),
-    h('span', { style: 'color:var(--muted);margin:0 8px;' }, '·'),
-    h('span', { style: 'color:var(--muted);' }, tallyText)
+  // Running game tally — through this hole (includes current)
+  root.appendChild(h('div', { style: 'text-align:center;padding:10px 14px;margin:0 14px;background:var(--card);border-radius:var(--radius);border:1px solid var(--border-light);font-size:12px;font-weight:700;display:flex;justify-content:space-around;' },
+    h('div', null,
+      h('div', { style: 'font-size:9px;text-transform:uppercase;color:var(--muted);letter-spacing:1px;' }, 'Middle'),
+      h('div', { style: `color:${tallyClr(thruMid)};` }, `${thruMid.a} – ${thruMid.b}`)
+    ),
+    h('div', null,
+      h('div', { style: 'font-size:9px;text-transform:uppercase;color:var(--muted);letter-spacing:1px;' }, 'Top'),
+      h('div', { style: `color:${tallyClr(thruTop)};` }, `${thruTop.a} – ${thruTop.b}`)
+    ),
+    h('div', null,
+      h('div', { style: 'font-size:9px;text-transform:uppercase;color:var(--muted);letter-spacing:1px;' }, 'Bottom'),
+      h('div', { style: `color:${tallyClr(thruBot)};` }, `${thruBot.a} – ${thruBot.b}`)
+    )
   ));
 
   // Bottom nav — respects startNine play order
