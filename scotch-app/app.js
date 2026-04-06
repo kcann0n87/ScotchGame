@@ -90,10 +90,15 @@ function migrateCourse(course) {
   // Seed default tees if still empty
   if (course.tees.length === 0) {
     course.tees = [
-      { name: 'Blue',  si: null },
-      { name: 'White', si: null },
-      { name: 'Gold',  si: null }
+      { name: 'Blue',  si: null, rating: null, slope: null },
+      { name: 'White', si: null, rating: null, slope: null },
+      { name: 'Gold',  si: null, rating: null, slope: null }
     ];
+  }
+  // Backfill rating on existing tees
+  for (const t of course.tees) {
+    if (t.rating === undefined) t.rating = null;
+    delete t.slope; // not used
   }
 }
 
@@ -182,9 +187,9 @@ const COURSE_PRESETS = [
 
 function defaultTeesList() {
   return [
-    { name: 'Blue',  si: null },
-    { name: 'White', si: null },
-    { name: 'Gold',  si: null }
+    { name: 'Blue',  si: null, rating: null },
+    { name: 'White', si: null, rating: null },
+    { name: 'Gold',  si: null, rating: null }
   ];
 }
 
@@ -506,8 +511,23 @@ function renderCourseEdit() {
             type: 'text',
             value: tee.name,
             style: 'flex:1;',
+            placeholder: 'Tee name',
             oninput: e => { tee.name = e.target.value; save(); }
           }),
+          h('div', { style: 'flex:0 0 80px;' },
+            h('input', {
+              type: 'number',
+              value: tee.rating != null ? String(tee.rating) : '',
+              placeholder: 'Rating',
+              style: 'text-align:center;padding:10px 6px;font-size:13px;',
+              step: '0.1',
+              oninput: e => {
+                const v = e.target.value;
+                tee.rating = v === '' ? null : parseFloat(v) || null;
+                save();
+              }
+            })
+          ),
           h('button', {
             class: `btn btn-sm ${hasOverride ? 'gold' : 'secondary'}`,
             style: 'width:auto;',
@@ -586,7 +606,7 @@ function renderCourseEdit() {
       class: 'btn secondary',
       style: 'margin-bottom:16px;',
       onclick: () => {
-        course.tees.push({ name: 'New Tee', si: null });
+        course.tees.push({ name: 'New Tee', si: null, rating: null });
         save();
         render();
       }
@@ -745,28 +765,36 @@ function renderNewRound() {
 
   // Players
   const is5 = newRoundDraft.mode === '5man';
+
+  // Auto-assign swing: first player on the 3-man team is always the swing player
+  if (is5) {
+    // Clear all swing flags first
+    newRoundDraft.players.forEach(p => p.swing = false);
+    const teamA = newRoundDraft.players.filter(p => p.team === 'A');
+    const teamB = newRoundDraft.players.filter(p => p.team === 'B');
+    const bigTeam = teamA.length >= 3 ? teamA : (teamB.length >= 3 ? teamB : null);
+    if (bigTeam && bigTeam[0]) bigTeam[0].swing = true;
+  }
+
   const playersCard = h('div', { class: 'card' },
     h('h2', null, 'Players'),
     h('div', { style: 'font-size:12px;color:var(--muted);margin-bottom:10px;' },
       is5
-        ? '3-man team has a swing player in both games. Action splits by stake shares (full=2, half=1).'
+        ? 'Player 1 on the 3-man team is the swing (plays both games). Action splits by stake shares (full=2, half=1).'
         : 'Each player picks full or half stake. Mixed pairings settle at the lower stake.'),
     ...(() => {
       // Compute Game 1 / Game 2 assignment for 5-man mode.
-      // The 3-man team's non-swing players (in order) become Game 1 and Game 2 partners.
-      // The swing player plays in BOTH games.
       const gameLabel = {};
       if (is5) {
         const teamA = newRoundDraft.players.filter(p => p.team === 'A');
         const teamB = newRoundDraft.players.filter(p => p.team === 'B');
         const bigTeam  = teamA.length === 3 ? teamA : (teamB.length === 3 ? teamB : null);
         if (bigTeam) {
-          const swing = bigTeam.find(p => p.swing);
-          const nonSwings = bigTeam.filter(p => !p.swing);
+          const swing = bigTeam[0]; // First player on 3-man team = swing
+          const nonSwings = bigTeam.slice(1);
           if (nonSwings[0]) gameLabel[nonSwings[0].id] = 'G1';
           if (nonSwings[1]) gameLabel[nonSwings[1].id] = 'G2';
           if (swing) gameLabel[swing.id] = 'BOTH';
-          // 2-man team plays both
           const smallTeam = bigTeam === teamA ? teamB : teamA;
           for (const p of smallTeam) gameLabel[p.id] = 'BOTH';
         }
@@ -845,7 +873,7 @@ function renderNewRound() {
                     if (name && name.trim() && course) {
                       const trimmed = name.trim();
                       const exists = course.tees.find(t => t.name === trimmed);
-                      if (!exists) course.tees.push({ name: trimmed, si: null });
+                      if (!exists) course.tees.push({ name: trimmed, si: null, rating: null });
                       p.tees = trimmed;
                       save();
                       render();
@@ -859,28 +887,16 @@ function renderNewRound() {
                 }
               },
                 ...tees.map(tee => {
-                  const label = tee.name + (Array.isArray(tee.si) && tee.si.length === 18 ? ' ★' : '');
+                  let label = tee.name;
+                  if (tee.rating) label += ` (${tee.rating})`;
+                  if (Array.isArray(tee.si) && tee.si.length === 18) label += ' ★';
                   return h('option', { value: tee.name, ...(p.tees === tee.name ? { selected: 'selected' } : {}) }, label);
                 }),
                 h('option', { value: '__add__' }, '+ Add new tee…')
               );
             })()
           ),
-          is5
-            ? h('div', { class: 'field', style: 'margin-top:8px;' },
-                h('label', { style: 'display:flex;align-items:center;gap:6px;cursor:pointer;' },
-                  h('input', { type: 'radio', name: 'swing', ...(p.swing ? { checked: 'checked' } : {}),
-                    onchange: () => {
-                      newRoundDraft.players.forEach(x => x.swing = false);
-                      p.swing = true;
-                      render();
-                    },
-                    style: 'width:auto;'
-                  }),
-                  h('span', null, 'Swing player (3-man team, plays both games)')
-                )
-              )
-            : null
+          null
         )
       );
       });
@@ -903,8 +919,7 @@ function renderNewRound() {
         if (!(teamA.length === 3 && teamB.length === 2) && !(teamA.length === 2 && teamB.length === 3)) {
           alert('5-man mode needs a 3-man team and a 2-man team'); return;
         }
-        const bigTeam = teamA.length === 3 ? newRoundDraft.players.filter(p=>p.team==='A') : newRoundDraft.players.filter(p=>p.team==='B');
-        if (!bigTeam.some(p => p.swing)) { alert('Designate a swing player on the 3-man team'); return; }
+        // Swing is auto-assigned to first player on 3-man team (done above in render)
       }
       // Coerce empty handicaps to 0 and empty names to "Player N"
       newRoundDraft.players.forEach((p, i) => {
