@@ -3487,9 +3487,9 @@ function renderRound() {
   // Hole header — shows tally BEFORE this hole (who's up, not raw scores)
   root.appendChild(h('div', { class: 'hole-header' },
     h('div', { class: 'hole-number' }, String(hIdx + 1)),
-    h('div', { style: 'font-size:12px;font-weight:600;color:rgba(255,255,255,0.8);margin-top:4px;display:flex;gap:12px;justify-content:center;' },
-      h('span', null, `Mid: ${tallyStr(beforeMid)}`),
+    h('div', { style: 'font-size:14px;font-weight:700;color:rgba(255,255,255,0.85);margin-top:6px;display:flex;gap:16px;justify-content:center;' },
       h('span', null, `Top: ${tallyStr(beforeTop)}`),
+      h('span', null, `Mid: ${tallyStr(beforeMid)}`),
       h('span', null, `Bot: ${tallyStr(beforeBot)}`)
     ),
     h('div', { class: 'hole-info' },
@@ -3704,7 +3704,7 @@ function renderRound() {
     if (bd.ctp && bd.ctp !== 'NONE') chips.push(`CTP→${bd.ctp} (2)`);
     if (bd.birdie && bd.birdie !== 'T') chips.push(`Birdie→${bd.birdie} (4)`);
     if (bd.polie) chips.push(`Polie→${bd.polie} (1)`);
-    if (bd.keepTake) chips.push(bd.keepTake);
+    if (bd.keepTake) chips.push(bd.keepTake.startsWith('Keep') ? 'Keep' : 'Take');
     if (bd.blitz) chips.push(`BLITZ ×2 →${bd.blitz}`);
     if (bd.roll && bd.roll > 1) chips.push(`ROLL ×${bd.roll}`);
     if (bd.playhoused) chips.push(`PLAYHOUSE ×2`);
@@ -3747,17 +3747,17 @@ function renderRound() {
   }
 
   // Running game tally — through this hole (includes current)
-  root.appendChild(h('div', { style: 'text-align:center;padding:10px 14px;margin:0 14px;background:var(--card);border-radius:var(--radius);border:1px solid var(--border-light);font-size:12px;font-weight:700;display:flex;justify-content:space-around;' },
+  root.appendChild(h('div', { style: 'text-align:center;padding:10px 14px;margin:0 14px;background:var(--card);border-radius:var(--radius);border:1px solid var(--border-light);font-size:14px;font-weight:700;display:flex;justify-content:space-around;' },
     h('div', null,
-      h('div', { style: 'font-size:9px;text-transform:uppercase;color:var(--muted);letter-spacing:1px;' }, 'Middle'),
-      h('div', { style: `color:${tallyClr(thruMid)};` }, tallyStr(thruMid))
-    ),
-    h('div', null,
-      h('div', { style: 'font-size:9px;text-transform:uppercase;color:var(--muted);letter-spacing:1px;' }, 'Top'),
+      h('div', { style: 'font-size:10px;text-transform:uppercase;color:var(--muted);letter-spacing:1px;' }, 'Top'),
       h('div', { style: `color:${tallyClr(thruTop)};` }, tallyStr(thruTop))
     ),
     h('div', null,
-      h('div', { style: 'font-size:9px;text-transform:uppercase;color:var(--muted);letter-spacing:1px;' }, 'Bottom'),
+      h('div', { style: 'font-size:10px;text-transform:uppercase;color:var(--muted);letter-spacing:1px;' }, 'Middle'),
+      h('div', { style: `color:${tallyClr(thruMid)};` }, tallyStr(thruMid))
+    ),
+    h('div', null,
+      h('div', { style: 'font-size:10px;text-transform:uppercase;color:var(--muted);letter-spacing:1px;' }, 'Bottom'),
       h('div', { style: `color:${tallyClr(thruBot)};` }, tallyStr(thruBot))
     )
   ));
@@ -4384,7 +4384,7 @@ function renderMiddleGameCard(pts, round) {
           );
           const notes = [];
           if (p.breakdown.blitz) notes.push('BLITZ');
-          if (p.breakdown.keepTake) notes.push(p.breakdown.keepTake);
+          if (p.breakdown.keepTake) notes.push(p.breakdown.keepTake.startsWith('Keep') ? 'Keep' : 'Take');
           if (p.breakdown.roll > 1) notes.push(`×${p.breakdown.roll}`);
           return h('tr', null,
             h('td', null, String(i+1)),
