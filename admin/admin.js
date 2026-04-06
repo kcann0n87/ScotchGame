@@ -272,13 +272,14 @@ function render() {
 
   // Tabs
   const tabs = h('div', { class: 'tabs' },
-    ...['dashboard', 'players', 'handicaps', 'ledger'].map(t =>
+    ...['dashboard', 'enter round', 'players', 'handicaps', 'ledger'].map(t =>
       h('div', { class: `tab ${activeTab === t ? 'active' : ''}`, onclick: () => { activeTab = t; selectedPlayerId = null; render(); } }, t)
     )
   );
   app.appendChild(tabs);
 
   if (activeTab === 'dashboard') renderDashboard(app);
+  else if (activeTab === 'enter round') renderEnterRound(app);
   else if (activeTab === 'players') renderPlayers(app);
   else if (activeTab === 'handicaps') renderHandicaps(app);
   else if (activeTab === 'ledger') renderLedger(app);
@@ -425,6 +426,171 @@ function renderPlayers(app) {
       )
     )
   ));
+}
+
+// ==================== ENTER ROUND TAB ====================
+let roundEntry = null;
+function initRoundEntry() {
+  roundEntry = {
+    date: new Date().toISOString().split('T')[0],
+    course: '',
+    players: [
+      { profileId: '', tee: '', rating: '', gross: '', amount: '' },
+      { profileId: '', tee: '', rating: '', gross: '', amount: '' },
+      { profileId: '', tee: '', rating: '', gross: '', amount: '' },
+      { profileId: '', tee: '', rating: '', gross: '', amount: '' },
+    ]
+  };
+}
+
+function renderEnterRound(app) {
+  if (!roundEntry) initRoundEntry();
+  const re = roundEntry;
+
+  app.appendChild(h('div', { class: 'card', style: 'margin-top:16px;' },
+    h('h2', null, 'Enter a Round'),
+    h('div', { style: 'font-size:12px;color:var(--muted);margin-bottom:14px;' },
+      'Manually enter a completed round. This creates round records for handicap calculation and updates the money ledger.'),
+
+    // Date + Course
+    h('div', { style: 'display:flex;gap:12px;margin-bottom:16px;' },
+      h('div', { class: 'field', style: 'flex:1;' },
+        h('label', null, 'Date'),
+        h('input', { type: 'date', value: re.date, oninput: e => { re.date = e.target.value; } })
+      ),
+      h('div', { class: 'field', style: 'flex:2;' },
+        h('label', null, 'Course'),
+        h('input', { type: 'text', value: re.course, placeholder: 'Bear Lakes CC', oninput: e => { re.course = e.target.value; } })
+      )
+    ),
+
+    // Player rows
+    h('table', null,
+      h('thead', null, h('tr', null,
+        h('th', null, '#'),
+        h('th', null, 'Player'),
+        h('th', null, 'Tee'),
+        h('th', null, 'Rating'),
+        h('th', null, 'Gross'),
+        h('th', null, 'Win/Lose ($)')
+      )),
+      h('tbody', null,
+        ...re.players.map((p, i) =>
+          h('tr', null,
+            h('td', null, String(i + 1)),
+            h('td', null,
+              h('select', { style: 'width:100%;', value: p.profileId, onchange: e => { p.profileId = e.target.value; } },
+                h('option', { value: '' }, '— Select —'),
+                ...allProfiles.map(pr =>
+                  h('option', { value: pr.id, ...(p.profileId === pr.id ? { selected: 'selected' } : {}) }, pr.display_name)
+                )
+              )
+            ),
+            h('td', null, h('input', { type: 'text', value: p.tee, placeholder: 'Blue', style: 'width:70px;', oninput: e => { p.tee = e.target.value; } })),
+            h('td', null, h('input', { type: 'number', value: p.rating, placeholder: '72.5', step: '0.1', style: 'width:70px;', oninput: e => { p.rating = e.target.value; } })),
+            h('td', null, h('input', { type: 'number', value: p.gross, placeholder: '82', style: 'width:60px;', oninput: e => { p.gross = e.target.value; } })),
+            h('td', null, h('input', { type: 'number', value: p.amount, placeholder: '+200 or -150', style: 'width:100px;', oninput: e => { p.amount = e.target.value; } }))
+          )
+        )
+      )
+    ),
+
+    // Add/remove player buttons
+    h('div', { style: 'display:flex;gap:8px;margin-top:12px;' },
+      h('button', { class: 'btn sm secondary', onclick: () => {
+        re.players.push({ profileId: '', tee: '', rating: '', gross: '', amount: '' });
+        render();
+      } }, '+ Add Player'),
+      re.players.length > 2
+        ? h('button', { class: 'btn sm secondary', onclick: () => {
+            re.players.pop();
+            render();
+          } }, '- Remove Last')
+        : null
+    ),
+
+    // Save button
+    h('div', { style: 'margin-top:20px;display:flex;gap:10px;' },
+      h('button', { class: 'btn gold', onclick: saveEnteredRound }, 'Save Round'),
+      h('button', { class: 'btn secondary', onclick: () => { initRoundEntry(); render(); } }, 'Clear')
+    )
+  ));
+}
+
+async function saveEnteredRound() {
+  const re = roundEntry;
+  if (!re.course.trim()) { alert('Enter a course name'); return; }
+  const validPlayers = re.players.filter(p => p.profileId && p.gross);
+  if (validPlayers.length < 2) { alert('Enter at least 2 players with scores'); return; }
+
+  // Build round data blob
+  const playerObjects = validPlayers.map(p => {
+    const profile = allProfiles.find(pr => pr.id === p.profileId);
+    const gross = parseInt(p.gross) || 0;
+    const fakeScores = Array(18).fill(Math.round(gross / 18));
+    fakeScores[0] += gross - fakeScores.reduce((s, v) => s + v, 0);
+    return {
+      name: profile ? profile.display_name : 'Unknown',
+      scores: fakeScores,
+      teesName: p.tee || 'Manual',
+      handicap: profile ? (profile.handicap || 0) : 0,
+      team: 'A',
+      stake: 'full',
+      id: p.profileId
+    };
+  });
+
+  const tees = [...new Set(validPlayers.map(p => p.tee || 'Manual'))].map(name => {
+    const player = validPlayers.find(p => (p.tee || 'Manual') === name);
+    return { name, rating: player ? parseFloat(player.rating) || null : null, si: null };
+  });
+
+  const roundData = {
+    teamA: playerObjects,
+    teamB: [],
+    course: {
+      name: re.course.trim(),
+      tees,
+      holes: Array(18).fill(null).map((_, i) => ({ par: 4, si: i + 1 }))
+    }
+  };
+
+  // Save round
+  const { data: roundRow, error } = await db.from('rounds').insert({
+    scorer_id: user.id,
+    course_name: re.course.trim(),
+    played_at: re.date + 'T12:00:00Z',
+    mode: 'manual',
+    game_type: 'manual',
+    data: roundData,
+    settlement: { perPlayer: {} }
+  }).select().single();
+
+  if (error) { alert('Error saving round: ' + error.message); return; }
+
+  // Save round_players rows
+  const rpRows = validPlayers.map(p => {
+    const profile = allProfiles.find(pr => pr.id === p.profileId);
+    return {
+      round_id: roundRow.id,
+      user_id: p.profileId,
+      display_name: profile ? profile.display_name : 'Unknown',
+      team: 'A',
+      stake: 'full',
+      handicap: profile ? (profile.handicap || 0) : 0,
+      final_amount: parseInt(p.amount) || 0
+    };
+  });
+
+  const { error: rpError } = await db.from('round_players').insert(rpRows);
+  if (rpError) { alert('Error saving players: ' + rpError.message); return; }
+
+  alert(`Round saved! ${validPlayers.length} players at ${re.course.trim()}`);
+  initRoundEntry();
+  allRounds = null;
+  allRoundPlayers = null;
+  handicapResults = null;
+  await loadAllData();
 }
 
 // ==================== DASHBOARD TAB ====================
