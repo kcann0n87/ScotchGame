@@ -38,6 +38,16 @@ DROP POLICY IF EXISTS "profiles_update_admin" ON profiles;
 CREATE POLICY "profiles_update_admin" ON profiles FOR UPDATE
   USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_admin = true));
 
+-- Admin can insert new profiles (for manual/guest players who don't have accounts)
+DROP POLICY IF EXISTS "profiles_insert_admin" ON profiles;
+CREATE POLICY "profiles_insert_admin" ON profiles FOR INSERT
+  WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_admin = true));
+
+-- Admin can delete profiles
+DROP POLICY IF EXISTS "profiles_delete_admin" ON profiles;
+CREATE POLICY "profiles_delete_admin" ON profiles FOR DELETE
+  USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_admin = true));
+
 -- Payments: admin can do everything; regular users can read their own
 DROP POLICY IF EXISTS "payments_admin_all" ON payments;
 CREATE POLICY "payments_admin_all" ON payments FOR ALL

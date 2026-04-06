@@ -322,9 +322,55 @@ let editingProfileId = null;
 let editName = '';
 let editHandicap = '';
 let editEmail = '';
+let showAddPlayer = false;
+let addPlayerName = '';
+let addPlayerHandicap = '';
+let addPlayerEmail = '';
 
 function renderPlayers(app) {
+  // Add Player form
   app.appendChild(h('div', { class: 'card', style: 'margin-top:16px;' },
+    h('h2', null, 'Add Player'),
+    h('div', { style: 'font-size:12px;color:var(--muted);margin-bottom:12px;' },
+      'Add players who don\'t have their own account. They\'ll show up in the app when linking players to a round.'),
+    !showAddPlayer
+      ? h('button', { class: 'btn secondary', onclick: () => { showAddPlayer = true; addPlayerName = ''; addPlayerHandicap = ''; addPlayerEmail = ''; render(); } }, '+ Add Player')
+      : h('div', null,
+          h('div', { class: 'field' },
+            h('label', null, 'Name (required)'),
+            h('input', { type: 'text', placeholder: 'Mike Johnson', oninput: e => { addPlayerName = e.target.value; } })
+          ),
+          h('div', { style: 'display:flex;gap:10px;' },
+            h('div', { class: 'field', style: 'flex:1;' },
+              h('label', null, 'Handicap'),
+              h('input', { type: 'number', placeholder: '0', oninput: e => { addPlayerHandicap = e.target.value; } })
+            ),
+            h('div', { class: 'field', style: 'flex:2;' },
+              h('label', null, 'Email (optional)'),
+              h('input', { type: 'email', placeholder: 'mike@example.com', oninput: e => { addPlayerEmail = e.target.value; } })
+            )
+          ),
+          h('div', { style: 'display:flex;gap:8px;margin-top:8px;' },
+            h('button', { class: 'btn', onclick: async () => {
+              if (!addPlayerName.trim()) { alert('Name is required'); return; }
+              const newId = crypto.randomUUID();
+              const { error } = await db.from('profiles').insert({
+                id: newId,
+                display_name: addPlayerName.trim(),
+                handicap: addPlayerHandicap ? parseInt(addPlayerHandicap) || 0 : 0,
+                email: addPlayerEmail.trim() || null
+              });
+              if (error) { alert('Error: ' + error.message); return; }
+              showAddPlayer = false;
+              allProfiles = null;
+              await loadAllData();
+            } }, 'Save Player'),
+            h('button', { class: 'btn secondary', onclick: () => { showAddPlayer = false; render(); } }, 'Cancel')
+          )
+        )
+  ));
+
+  app.appendChild(h('div', { class: 'card' },
     h('h2', null, 'Manage Players'),
     h('div', { style: 'font-size:12px;color:var(--muted);margin-bottom:12px;' },
       'Click a player to edit their display name, handicap, or email.'),
