@@ -58,5 +58,31 @@ DROP POLICY IF EXISTS "payments_select_own" ON payments;
 CREATE POLICY "payments_select_own" ON payments FOR SELECT
   USING (user_id = auth.uid());
 
--- 4. Set admin flag for the primary admin
+-- 4. Courses table — synced between admin and mobile app
+CREATE TABLE IF NOT EXISTS courses (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  tees jsonb NOT NULL DEFAULT '[]',
+  pars jsonb,
+  si jsonb,
+  created_by uuid REFERENCES profiles(id),
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS courses_name_idx ON courses (name);
+
+ALTER TABLE courses ENABLE ROW LEVEL SECURITY;
+
+-- Any authenticated user can read courses
+DROP POLICY IF EXISTS "courses_select_all" ON courses;
+CREATE POLICY "courses_select_all" ON courses FOR SELECT
+  USING (auth.role() = 'authenticated');
+
+-- Admin can manage courses
+DROP POLICY IF EXISTS "courses_admin_all" ON courses;
+CREATE POLICY "courses_admin_all" ON courses FOR ALL
+  USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_admin = true))
+  WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_admin = true));
+
+-- 5. Set admin flag for the primary admin
 UPDATE profiles SET is_admin = true WHERE email = 'kcannonpoker@gmail.com';

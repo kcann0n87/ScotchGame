@@ -397,6 +397,14 @@ const SupabaseClient = (() => {
     return () => _client.removeChannel(channel);
   }
 
+  // ---------- Courses ----------
+  async function loadCourses() {
+    if (!_client) return [];
+    const { data, error } = await _client.from('courses').select('*').order('name');
+    if (error) { console.warn('loadCourses error:', error); return []; }
+    return data || [];
+  }
+
   // ---------- Public API ----------
   return {
     init,
@@ -420,6 +428,8 @@ const SupabaseClient = (() => {
     listMyRounds,
     getMyStats,
     getHeadToHead,
+    // courses
+    loadCourses,
     // live share
     createLiveShare,
     updateLiveShare,

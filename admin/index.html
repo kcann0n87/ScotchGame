@@ -252,6 +252,7 @@ let db = null;
 let user = null;
 let profile = null;
 let activeTab = 'dashboard';
+let allCourses = null;
 
 // Cached data
 let allProfiles = null;
@@ -328,16 +329,25 @@ async function signOut() {
 // ==================== DATA LOADING ====================
 async function loadAllData() {
   if (!db || !user) return;
-  const [profiles, rounds, rp, payments] = await Promise.all([
+  const [profiles, rounds, rp, payments, courses] = await Promise.all([
     db.from('profiles').select('*'),
     db.from('rounds').select('*').order('played_at', { ascending: false }),
     db.from('round_players').select('*'),
-    db.from('payments').select('*').order('created_at', { ascending: false })
+    db.from('payments').select('*').order('created_at', { ascending: false }),
+    db.from('courses').select('*').order('name')
   ]);
   allProfiles = profiles.data || [];
   allRounds = rounds.data || [];
   allRoundPlayers = rp.data || [];
   allPayments = payments.data || [];
+  allCourses = courses.data || [];
+  // Merge DB courses into the hardcoded COURSES list (DB takes priority)
+  for (const c of allCourses) {
+    const idx = COURSES.findIndex(x => x.name === c.name);
+    const entry = { name: c.name, tees: c.tees || [], dbId: c.id, pars: c.pars, si: c.si };
+    if (idx >= 0) COURSES[idx] = entry;
+    else COURSES.push(entry);
+  }
   render();
 }
 
@@ -515,7 +525,7 @@ function render() {
 
   // Tabs
   const tabs = h('div', { class: 'tabs' },
-    ...['dashboard', 'enter round', 'players', 'handicaps', 'ledger'].map(t =>
+    ...['dashboard', 'enter round', 'courses', 'players', 'handicaps', 'ledger'].map(t =>
       h('div', { class: `tab ${activeTab === t ? 'active' : ''}`, onclick: () => { activeTab = t; selectedPlayerId = null; render(); } }, t)
     )
   );
@@ -523,6 +533,7 @@ function render() {
 
   if (activeTab === 'dashboard') renderDashboard(app);
   else if (activeTab === 'enter round') renderEnterRound(app);
+  else if (activeTab === 'courses') renderCourses(app);
   else if (activeTab === 'players') renderPlayers(app);
   else if (activeTab === 'handicaps') renderHandicaps(app);
   else if (activeTab === 'ledger') renderLedger(app);
@@ -557,6 +568,123 @@ function renderAccessDenied() {
       h('p', null, 'Your account does not have admin privileges.'),
       h('p', null, `Logged in as: ${user.email}`),
       h('button', { class: 'btn secondary', onclick: signOut }, 'Sign Out')
+    )
+  ));
+}
+
+// ==================== COURSES TAB ====================
+let editingCourseId = null;
+let showAddCourse = false;
+let newCourseName = '';
+let newCourseTees = [{ name: 'Blue', rating: '' }, { name: 'White', rating: '' }, { name: 'Gold', rating: '' }];
+
+function renderCourses(app) {
+  // Add Course form
+  app.appendChild(h('div', { class: 'card', style: 'margin-top:16px;' },
+    h('h2', null, 'Add Course'),
+    !showAddCourse
+      ? h('button', { class: 'btn secondary', onclick: () => { showAddCourse = true; newCourseName = ''; newCourseTees = [{ name: 'Blue', rating: '' }, { name: 'White', rating: '' }, { name: 'Gold', rating: '' }]; render(); } }, '+ Add Course')
+      : h('div', null,
+          h('div', { class: 'field' },
+            h('label', null, 'Course Name'),
+            h('input', { type: 'text', placeholder: 'Pine Valley CC', oninput: e => { newCourseName = e.target.value; } })
+          ),
+          h('h3', null, 'Tee Boxes'),
+          ...newCourseTees.map((t, i) =>
+            h('div', { style: 'display:flex;gap:8px;align-items:center;margin-bottom:6px;' },
+              h('input', { type: 'text', value: t.name, placeholder: 'Tee name', style: 'flex:1;', oninput: e => { t.name = e.target.value; } }),
+              h('input', { type: 'number', value: t.rating, placeholder: 'Rating', step: '0.1', style: 'width:80px;', oninput: e => { t.rating = e.target.value; } }),
+              h('button', { class: 'btn sm danger', style: 'width:auto;', onclick: () => { newCourseTees.splice(i, 1); render(); } }, 'x')
+            )
+          ),
+          h('button', { class: 'btn sm secondary', style: 'margin-bottom:12px;', onclick: () => { newCourseTees.push({ name: '', rating: '' }); render(); } }, '+ Add Tee'),
+          h('div', { style: 'display:flex;gap:8px;' },
+            h('button', { class: 'btn', onclick: async () => {
+              if (!newCourseName.trim()) { alert('Enter a course name'); return; }
+              const tees = newCourseTees.filter(t => t.name.trim()).map(t => ({ name: t.name.trim(), rating: t.rating ? parseFloat(t.rating) : null }));
+              const { error } = await db.from('courses').insert({
+                name: newCourseName.trim(),
+                tees,
+                created_by: user.id
+              });
+              if (error) { alert('Error: ' + error.message); return; }
+              showAddCourse = false;
+              allCourses = null;
+              await loadAllData();
+            } }, 'Save Course'),
+            h('button', { class: 'btn secondary', onclick: () => { showAddCourse = false; render(); } }, 'Cancel')
+          )
+        )
+  ));
+
+  // Course list
+  app.appendChild(h('div', { class: 'card' },
+    h('h2', null, `All Courses (${COURSES.length})`),
+    h('table', null,
+      h('thead', null, h('tr', null,
+        h('th', null, 'Course'),
+        h('th', null, 'Tees'),
+        h('th', null, 'Source'),
+        h('th', null, '')
+      )),
+      h('tbody', null,
+        ...COURSES.map(c => {
+          const isEditing = editingCourseId === (c.dbId || c.name);
+          const teeStr = (c.tees || []).map(t => `${t.name}${t.rating ? ' (' + t.rating + ')' : ''}`).join(', ');
+          if (isEditing) {
+            return h('tr', { style: 'background:#fffdf5;vertical-align:top;' },
+              h('td', { colspan: '4' },
+                h('div', { class: 'field' },
+                  h('label', null, 'Course Name'),
+                  h('input', { type: 'text', value: c.name, oninput: e => { c._editName = e.target.value; } })
+                ),
+                h('h3', null, 'Tees'),
+                ...(c._editTees || c.tees || []).map((t, i) =>
+                  h('div', { style: 'display:flex;gap:8px;align-items:center;margin-bottom:6px;' },
+                    h('input', { type: 'text', value: t.name, placeholder: 'Tee', style: 'flex:1;', oninput: e => { t.name = e.target.value; } }),
+                    h('input', { type: 'number', value: t.rating != null ? String(t.rating) : '', placeholder: 'Rating', step: '0.1', style: 'width:80px;', oninput: e => { t.rating = e.target.value ? parseFloat(e.target.value) : null; } }),
+                    h('button', { class: 'btn sm danger', style: 'width:auto;', onclick: () => {
+                      if (!c._editTees) c._editTees = [...(c.tees || [])];
+                      c._editTees.splice(i, 1);
+                      render();
+                    } }, 'x')
+                  )
+                ),
+                h('button', { class: 'btn sm secondary', style: 'margin-bottom:8px;', onclick: () => {
+                  if (!c._editTees) c._editTees = [...(c.tees || [])];
+                  c._editTees.push({ name: '', rating: null });
+                  render();
+                } }, '+ Add Tee'),
+                h('div', { style: 'display:flex;gap:8px;margin-top:8px;' },
+                  h('button', { class: 'btn sm', onclick: async () => {
+                    const name = (c._editName || c.name).trim();
+                    const tees = (c._editTees || c.tees || []).filter(t => t.name?.trim()).map(t => ({ name: t.name.trim(), rating: t.rating }));
+                    if (c.dbId) {
+                      await db.from('courses').update({ name, tees, updated_at: new Date().toISOString() }).eq('id', c.dbId);
+                    } else {
+                      await db.from('courses').insert({ name, tees, created_by: user.id });
+                    }
+                    editingCourseId = null;
+                    allCourses = null;
+                    await loadAllData();
+                  } }, 'Save'),
+                  h('button', { class: 'btn sm secondary', onclick: () => { editingCourseId = null; delete c._editTees; delete c._editName; render(); } }, 'Cancel')
+                )
+              )
+            );
+          }
+          return h('tr', { class: 'clickable', onclick: () => {
+            editingCourseId = c.dbId || c.name;
+            c._editTees = (c.tees || []).map(t => ({ ...t }));
+            render();
+          } },
+            h('td', null, h('strong', null, c.name)),
+            h('td', { style: 'font-size:12px;' }, teeStr || '—'),
+            h('td', null, c.dbId ? h('span', { class: 'badge ok' }, 'Database') : h('span', { class: 'badge warn' }, 'Preset only')),
+            h('td', { style: 'font-size:11px;color:var(--muted);' }, 'Click to edit')
+          );
+        })
+      )
     )
   ));
 }

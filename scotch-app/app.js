@@ -2790,6 +2790,33 @@ async function init() {
         state.screen = 'account';
         render();
       }
+      // Merge cloud courses with local presets
+      try {
+        const dbCourses = await SupabaseClient.loadCourses();
+        if (dbCourses && dbCourses.length > 0) {
+          for (const dc of dbCourses) {
+            const existing = state.courses.find(c => c.name === dc.name);
+            if (existing) {
+              // Update tees from DB if they have ratings
+              if (dc.tees && dc.tees.length > 0) {
+                existing.tees = dc.tees.map(t => typeof t === 'string' ? { name: t, si: null, rating: null } : { name: t.name, si: t.si || null, rating: t.rating || null });
+              }
+            } else {
+              // Add new course from DB
+              const newCourse = {
+                id: uid(),
+                name: dc.name,
+                holes: dc.pars ? dc.pars.map((par, i) => ({ par, si: dc.si ? dc.si[i] : (i + 1) })) : DEFAULT_PARS.map((par, i) => ({ par, si: DEFAULT_SI[i] })),
+                tees: (dc.tees || []).map(t => typeof t === 'string' ? { name: t, si: null, rating: null } : { name: t.name, si: t.si || null, rating: t.rating || null })
+              };
+              if (newCourse.tees.length === 0) newCourse.tees = defaultTeesList();
+              state.courses.push(newCourse);
+            }
+          }
+          save();
+          render();
+        }
+      } catch (e) { console.warn('Course sync failed:', e); }
       if (state.liveViewCode) {
         state.liveViewUnsubscribe = await SupabaseClient.subscribeToLiveShare(
           state.liveViewCode,
