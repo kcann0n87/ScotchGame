@@ -2178,6 +2178,7 @@ function renderLogin() {
         if (mode === 'signin') {
           const { error } = await SupabaseClient.signInWithEmail(state.loginEmail, state.loginPassword);
           if (error) throw error;
+          state.screen = 'account';
         } else if (mode === 'signup') {
           if (!state.loginDisplayName || !state.loginDisplayName.trim()) {
             state.loginError = 'Please enter a display name.';
@@ -2706,6 +2707,9 @@ async function init() {
     SupabaseClient.onAuthChange((user, profile) => {
       state.authUser = user;
       state.authProfile = profile;
+      if (user && state.screen === 'login') {
+        state.screen = 'account';
+      }
       save();
       render();
     });

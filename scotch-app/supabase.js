@@ -51,6 +51,23 @@ const SupabaseClient = (() => {
     if (!isConfigured()) { console.warn('Supabase not configured or library not loaded'); return; }
     const lib = getSupabaseLib();
     _client = lib.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const params = new URLSearchParams(window.location.search);
+    const authCode = params.get('code');
+    if (authCode) {
+      try {
+        await _client.auth.exchangeCodeForSession(authCode);
+      } catch (e) {
+        console.warn('Code exchange failed:', e);
+      }
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+
+    const hashParams = new URLSearchParams(window.location.hash.substring(1));
+    if (hashParams.get('access_token')) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+
     const { data: { session } } = await _client.auth.getSession();
     if (session) {
       _user = session.user;
@@ -61,7 +78,6 @@ const SupabaseClient = (() => {
       _profile = null;
       if (_user) {
         await loadProfile();
-        // Claim any guest rows that match this user's email (retroactive linking)
         await claimGuestRows();
       }
       notify();
