@@ -2641,6 +2641,19 @@ function newRound(course, players, teamAIds, teamBIds, mode, playhouse, startNin
   };
 }
 
+// ---------- Team name helpers ----------
+// Returns first names joined by "/" for display, e.g. "Kyle/Jordan"
+function teamLabel(players) {
+  if (!players || players.length === 0) return '?';
+  return players.map(p => (p.name || '?').split(' ')[0]).join('/');
+}
+function teamLabels(round) {
+  return {
+    a: teamLabel(round.teamA),
+    b: teamLabel(round.teamB)
+  };
+}
+
 // ---------- Rendering ----------
 const root = document.getElementById('app');
 
@@ -3579,14 +3592,15 @@ function renderRound() {
     if (!seg) return null;
     return seg.points.find(p => p.h === holeIdx) || null;
   }
+  const tNames = teamLabels(r);
   function topBottomRow(label, entry) {
     if (!entry) return null;
     const aWin = entry.a > entry.b;
     const bWin = entry.b > entry.a;
     const labelEl = aWin
-      ? h('span', { class: 'tb-result team-a' }, `A +${entry.a - entry.b}`)
+      ? h('span', { class: 'tb-result team-a' }, `${tNames.a} +${entry.a - entry.b}`)
       : bWin
-        ? h('span', { class: 'tb-result team-b' }, `B +${entry.b - entry.a}`)
+        ? h('span', { class: 'tb-result team-b' }, `${tNames.b} +${entry.b - entry.a}`)
         : h('span', { class: 'tb-result tied' }, 'Tied');
     return h('div', { class: 'tb-row' },
       h('span', { class: 'tb-label' }, label),
@@ -3620,15 +3634,16 @@ function renderRound() {
     const topEntry    = holePointsIn(g.sub.top, hIdx);
     const bottomEntry = holePointsIn(g.sub.bottom, hIdx);
 
+    const tl = teamLabels(r);
     root.appendChild(h('div', { class: 'card' },
       h('h2', null, g.label ? `${g.label} — Hole Points` : 'Hole Points'),
       h('div', { style: 'display:flex;justify-content:space-around;text-align:center;padding:8px 0;' },
         h('div', null,
-          h('div', { style: 'font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;' }, 'Team A'),
+          h('div', { style: 'font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;' }, tl.a),
           h('div', { style: `font-size:36px;font-weight:900;color:${winner==='A'?'var(--team-a)':'var(--muted)'};font-feature-settings:"tnum";` }, String(hp.a))
         ),
         h('div', null,
-          h('div', { style: 'font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;' }, 'Team B'),
+          h('div', { style: 'font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;' }, tl.b),
           h('div', { style: `font-size:36px;font-weight:900;color:${winner==='B'?'var(--team-b)':'var(--muted)'};font-feature-settings:"tnum";` }, String(hp.b))
         )
       ),
@@ -3866,12 +3881,13 @@ function renderSummary() {
   }
 
   // Team totals banner (using adjusted numbers that include golf fees)
+  const stl = teamLabels(r);
   const teamA$ = r.teamA.reduce((s, p) => s + (adjustedPerPlayer[p.id] || 0), 0);
   root.appendChild(h('div', { class: 'card', style: 'background:var(--green);color:white;' },
     h('h2', { style: 'color:white;' }, 'Team Totals'),
     h('div', { style: 'text-align:center;padding:12px 0;' },
       h('div', { style: 'font-size:36px;font-weight:800;' },
-        teamA$ === 0 ? 'Even' : (teamA$ > 0 ? `Team A +$${teamA$}` : `Team B +$${Math.abs(teamA$)}`)
+        teamA$ === 0 ? 'Even' : (teamA$ > 0 ? `${stl.a} +$${teamA$}` : `${stl.b} +$${Math.abs(teamA$)}`)
       )
     )
   ));
@@ -4001,8 +4017,8 @@ function renderPerHoleAllGames(pts, round, label) {
       h('thead', null,
         h('tr', null,
           h('th', null, 'H'),
-          h('th', { class: 'team-a' }, 'Team A'),
-          h('th', { class: 'team-b' }, 'Team B')
+          h('th', { class: 'team-a' }, teamLabels(round).a),
+          h('th', { class: 'team-b' }, teamLabels(round).b)
         )
       ),
       h('tbody', null, ...rows)
@@ -4235,9 +4251,10 @@ function collapsibleCard(key, title, summaryContent, bodyFn) {
 }
 
 function renderMiddleGameCard(pts, round) {
+  const tl = teamLabels(round);
   const a = pts.pointsTotal.a, b = pts.pointsTotal.b;
   const diff = a - b;
-  const winner = diff > 0 ? 'Team A' : diff < 0 ? 'Team B' : null;
+  const winner = diff > 0 ? tl.a : diff < 0 ? tl.b : null;
   const summary = winner
     ? h('div', { class: 'big-diff' },
         h('span', { class: diff > 0 ? 'team-a-color' : 'team-b-color' },
@@ -4250,8 +4267,8 @@ function renderMiddleGameCard(pts, round) {
       h('thead', null,
         h('tr', null,
           h('th', null, 'Hole'),
-          h('th', null, 'Team A'),
-          h('th', null, 'Team B'),
+          h('th', null, tl.a),
+          h('th', null, tl.b),
           h('th', null, 'Notes')
         )
       ),
@@ -4436,8 +4453,8 @@ function renderPerHoleTable(pts, round, which) {
       h('thead', null,
         h('tr', null,
           h('th', null, 'Hole'),
-          h('th', { class: 'team-a' }, 'Team A'),
-          h('th', { class: 'team-b' }, 'Team B'),
+          h('th', { class: 'team-a' }, teamLabels(round).a),
+          h('th', { class: 'team-b' }, teamLabels(round).b),
           h('th', null, 'Δ')
         )
       ),
