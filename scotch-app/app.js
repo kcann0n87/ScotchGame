@@ -1370,11 +1370,7 @@ function renderRound() {
     )
   ));
 
-  // Bottom nav — respects startNine play order
-  // Play order: front-first = 0..17 normal; back-first = 9..17 then 0..8
-  const playOrder = r.startNine === 'back'
-    ? [9,10,11,12,13,14,15,16,17, 0,1,2,3,4,5,6,7,8]
-    : [0,1,2,3,4,5,6,7,8, 9,10,11,12,13,14,15,16,17];
+  // Bottom nav — respects startNine play order (reuse playOrder from tally above)
   const playPos = playOrder.indexOf(hIdx);
   const isFirst = playPos === 0;
   const isLast  = playPos === 17;
