@@ -2714,8 +2714,11 @@ async function init() {
       render();
     });
     try {
-      await SupabaseClient.init();
-      // If we're viewing a live share, subscribe now
+      const result = await SupabaseClient.init();
+      if (result && result.hadAuthInUrl && result.session) {
+        state.screen = 'account';
+        render();
+      }
       if (state.liveViewCode) {
         state.liveViewUnsubscribe = await SupabaseClient.subscribeToLiveShare(
           state.liveViewCode,

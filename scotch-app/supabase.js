@@ -50,29 +50,21 @@ const SupabaseClient = (() => {
   async function init() {
     if (!isConfigured()) { console.warn('Supabase not configured or library not loaded'); return; }
     const lib = getSupabaseLib();
+    const hadAuthInUrl = !!(window.location.hash && window.location.hash.includes('access_token')) ||
+                         !!(window.location.search && new URLSearchParams(window.location.search).has('code'));
+
     _client = lib.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-    const params = new URLSearchParams(window.location.search);
-    const authCode = params.get('code');
-    if (authCode) {
-      try {
-        await _client.auth.exchangeCodeForSession(authCode);
-      } catch (e) {
-        console.warn('Code exchange failed:', e);
-      }
-      window.history.replaceState({}, '', window.location.pathname);
-    }
-
-    const hashParams = new URLSearchParams(window.location.hash.substring(1));
-    if (hashParams.get('access_token')) {
-      window.history.replaceState({}, '', window.location.pathname);
-    }
 
     const { data: { session } } = await _client.auth.getSession();
     if (session) {
       _user = session.user;
       await loadProfile();
     }
+
+    if (hadAuthInUrl) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+
     _client.auth.onAuthStateChange(async (event, session) => {
       _user = session ? session.user : null;
       _profile = null;
@@ -83,6 +75,8 @@ const SupabaseClient = (() => {
       notify();
     });
     notify();
+
+    return { session, hadAuthInUrl };
   }
 
   async function loadProfile() {
