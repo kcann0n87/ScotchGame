@@ -49,5 +49,4 @@ CREATE POLICY "payments_select_own" ON payments FOR SELECT
   USING (user_id = auth.uid());
 
 -- 4. Set admin flag for the primary admin
--- UPDATE profiles SET is_admin = true WHERE email = 'kcann0npoker@gmail.com';
--- ^^^ Uncomment and run this line separately after confirming the email is correct.
+UPDATE profiles SET is_admin = true WHERE email = 'kcannonpoker@gmail.com';
