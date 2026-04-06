@@ -2020,12 +2020,15 @@ const SupabaseClient = (() => {
     else if (!error) {
       // Auto-create profile row
       const name = _user.user_metadata?.full_name || _user.email.split('@')[0];
-      const { data: created } = await _client
-        .from('profiles')
-        .insert({ id: _user.id, email: _user.email, display_name: name })
-        .select()
-        .single();
-      _profile = created;
+      try {
+        const { data: created, error: insertErr } = await _client
+          .from('profiles')
+          .insert({ id: _user.id, email: _user.email, display_name: name })
+          .select()
+          .single();
+        if (insertErr) console.warn('Profile auto-create failed:', insertErr);
+        else _profile = created;
+      } catch (e) { console.warn('Profile create exception:', e); }
     }
     return _profile;
   }
@@ -2091,13 +2094,19 @@ const SupabaseClient = (() => {
   // ---------- Friends / player search ----------
   async function searchUsersByName(query) {
     if (!_client) return [];
-    let q = _client.from('profiles').select('id, display_name, email, handicap').limit(30);
-    if (query && query.trim()) {
-      q = q.or(`display_name.ilike.%${query.trim()}%,email.ilike.%${query.trim()}%`);
+    try {
+      let q = _client.from('profiles').select('id, display_name, email, handicap').limit(30);
+      if (query && query.trim()) {
+        const s = query.trim().replace(/'/g, "''"); // escape single quotes
+        q = q.or(`display_name.ilike.%${s}%,email.ilike.%${s}%`);
+      }
+      const { data, error } = await q;
+      if (error) { console.warn('searchUsersByName error:', error); return []; }
+      return data || [];
+    } catch (e) {
+      console.warn('searchUsersByName exception:', e);
+      return [];
     }
-    const { data, error } = await q;
-    if (error) console.warn('searchUsersByName error:', error);
-    return data || [];
   }
   async function getFriends() {
     if (!_client || !_user) return [];
