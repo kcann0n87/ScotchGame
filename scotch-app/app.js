@@ -2400,11 +2400,26 @@ function renderAccount() {
     return;
   }
 
+  // Load stats for balance if not cached
+  if (!statsCache && typeof SupabaseClient !== 'undefined' && SupabaseClient.isConfigured()) {
+    loadStats();
+  }
+  const balance = statsCache ? statsCache.netTotal : null;
+  const balColor = balance > 0 ? 'var(--green-light)' : balance < 0 ? 'var(--team-b)' : 'var(--muted)';
+  const balText = balance == null ? '' : balance === 0 ? '$0' : balance > 0 ? `+$${balance}` : `-$${Math.abs(balance)}`;
+
   root.appendChild(h('div', { class: 'card' },
     h('h2', null, 'Profile'),
-    h('div', { style: 'font-size:16px;font-weight:700;' }, profile?.display_name || user.email),
-    h('div', { style: 'font-size:13px;color:var(--muted);margin-top:2px;' }, user.email),
-    h('div', { style: 'font-size:12px;color:var(--muted);margin-top:6px;' }, `Handicap: ${profile?.handicap ?? 0}`),
+    h('div', { style: 'display:flex;justify-content:space-between;align-items:center;' },
+      h('div', null,
+        h('div', { style: 'font-size:16px;font-weight:700;' }, profile?.display_name || user.email),
+        h('div', { style: 'font-size:13px;color:var(--muted);margin-top:2px;' }, user.email),
+        h('div', { style: 'font-size:12px;color:var(--muted);margin-top:4px;' }, `Handicap: ${profile?.handicap ?? 0}`)
+      ),
+      balance != null
+        ? h('div', { style: `font-size:24px;font-weight:900;color:${balColor};font-feature-settings:"tnum";` }, balText)
+        : null
+    ),
     h('button', { class: 'btn secondary', style: 'margin-top:16px;',
       onclick: () => { state.screen = 'history'; render(); } }, 'Round History'),
     h('button', { class: 'btn secondary', style: 'margin-top:8px;',

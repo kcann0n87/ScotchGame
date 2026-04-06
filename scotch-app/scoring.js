@@ -319,7 +319,9 @@ const Scoring = (() => {
     const backMain  = { startHole: 9, endHole: 17, name: 'Back',  points: [], spawned: false };
     const overall   = { startHole: 0, endHole: 17, name: 'Overall', points: [] };
     const segments = [frontMain, backMain, overall];
-    const presses = [];
+    // Auto back-9 press: the back 9 is automatically worth 2 games
+    const autoBackPress = { startHole: 9, endHole: 17, name: 'Back Press', points: [], spawned: false };
+    const presses = [autoBackPress];
 
     for (let h = 0; h < 18; h++) {
       const low = compareLow(round, h);
