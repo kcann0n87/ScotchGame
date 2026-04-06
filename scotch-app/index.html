@@ -2167,13 +2167,74 @@ const SupabaseClient = (() => {
     // Send invite emails to any unlinked players with emails
     for (const p of players) {
       if (!p.userId && p.invitedEmail) {
-        // Supabase's invite RPC; fire and forget
         try {
           await _client.auth.admin.inviteUserByEmail?.(p.invitedEmail);
         } catch (e) { /* admin API may not be available client-side */ }
       }
     }
+
+    // Auto-recalculate handicaps for all linked players in this round
+    try {
+      await recalcHandicapsForPlayers(players.filter(p => p.userId).map(p => p.userId));
+    } catch (e) {
+      console.warn('Auto handicap recalc failed:', e);
+    }
+
     return roundRow;
+  }
+
+  // ---------- Handicap auto-recalculation ----------
+  // Custom formula: rolling last 9 rounds by date, compute differential
+  // (gross - course rating), sort by value, discard best, average #2-#5.
+  async function recalcHandicapsForPlayers(userIds) {
+    if (!_client || !userIds || userIds.length === 0) return;
+
+    for (const userId of userIds) {
+      try {
+        // Get this player's most recent 9 round_players rows (with round data)
+        const { data: rps } = await _client
+          .from('round_players')
+          .select('display_name, round_id, rounds(played_at, data)')
+          .eq('user_id', userId)
+          .order('rounds(played_at)', { ascending: false })
+          .limit(9);
+
+        if (!rps || rps.length < 9) continue; // not enough rounds
+
+        // Extract differentials
+        const diffs = [];
+        for (const rp of rps) {
+          const round = rp.rounds;
+          if (!round || !round.data) continue;
+          const data = round.data;
+          const allPlayers = [...(data.teamA || []), ...(data.teamB || [])];
+          const player = allPlayers.find(p => p.name === rp.display_name);
+          if (!player || !player.scores) continue;
+
+          const gross = player.scores.reduce((s, v) => s + (v || 0), 0);
+          const teeName = player.teesName || player.tees || '';
+          const tee = (data.course?.tees || []).find(t => t.name === teeName);
+          if (!tee || !tee.rating) continue;
+
+          diffs.push(gross - tee.rating);
+        }
+
+        if (diffs.length < 9) continue;
+
+        // Sort by value ascending (best = lowest)
+        diffs.sort((a, b) => a - b);
+
+        // Discard #1 (best), average #2-#5
+        const counting = diffs.slice(1, 5);
+        const avg = counting.reduce((s, v) => s + v, 0) / counting.length;
+        const handicap = Math.round(avg);
+
+        // Write back to profile
+        await _client.from('profiles').update({ handicap }).eq('id', userId);
+      } catch (e) {
+        console.warn(`Handicap recalc failed for ${userId}:`, e);
+      }
+    }
   }
 
   async function listMyRounds() {
