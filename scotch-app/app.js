@@ -628,8 +628,8 @@ function ensureDraft() {
       gameType2: 'scotch',
       players: [
         p1,
-        { id: uid(), name: '', handicap: '', team: 'B', stake: 'full', swing: false, tees: '', userId: null, invitedEmail: null },
         { id: uid(), name: '', handicap: '', team: 'A', stake: 'full', swing: false, tees: '', userId: null, invitedEmail: null },
+        { id: uid(), name: '', handicap: '', team: 'B', stake: 'full', swing: false, tees: '', userId: null, invitedEmail: null },
         { id: uid(), name: '', handicap: '', team: 'B', stake: 'full', swing: false, tees: '', userId: null, invitedEmail: null },
       ]
     };
@@ -676,7 +676,8 @@ function renderNewRound() {
         onclick: () => {
           newRoundDraft.mode = '5man';
           if (newRoundDraft.players.length < 5) {
-            newRoundDraft.players.push({ id: uid(), name: '', handicap: '', team: 'A', stake: 'full', swing: false, tees: '', userId: null, invitedEmail: null });
+            // Insert as 3rd player (index 2) to keep Team A grouped at top
+            newRoundDraft.players.splice(2, 0, { id: uid(), name: '', handicap: '', team: 'A', stake: 'full', swing: false, tees: '', userId: null, invitedEmail: null });
           }
           render();
         }
