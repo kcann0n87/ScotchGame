@@ -1,4 +1,4 @@
-// ==================== LLOYD\u2019S GAME ADMIN DASHBOARD ====================
+// ==================== LLOYDS GAME ADMIN DASHBOARD ====================
 const Admin = (() => {
 
 // Reuse same Supabase credentials as mobile app
@@ -42,7 +42,7 @@ async function init() {
   try {
     const lib = window.supabase || window.Supabase;
     if (!lib || !lib.createClient) {
-      root.innerHTML = '<div class="login-box"><h2>⛳ Lloyd\'s Game Admin</h2><p>Supabase library not loaded. Try reloading.</p></div>';
+      root.innerHTML = '<div class="login-box"><h2>⛳ Lloyds Game Admin</h2><p>Supabase library not loaded. Try reloading.</p></div>';
       return;
     }
     db = lib.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -60,7 +60,7 @@ async function init() {
     render();
   } catch (e) {
     console.error('Admin init error:', e);
-    root.innerHTML = `<div class="login-box"><h2>⛳ Lloyd's Game Admin</h2><p style="color:red;">Error: ${e.message}</p><p style="font-size:12px;">This page must be served over HTTP (not file://). Try opening it on GitHub Pages or Replit instead.</p></div>`;
+    root.innerHTML = `<div class="login-box"><h2>⛳ Lloyds Game Admin</h2><p style="color:red;">Error: ${e.message}</p><p style="font-size:12px;">This page must be served over HTTP (not file://). Try opening it on GitHub Pages or Replit instead.</p></div>`;
   }
 }
 
@@ -261,7 +261,7 @@ function render() {
 
   // Header
   root.appendChild(h('div', { class: 'header' },
-    h('h1', null, 'LLOYD\u2019S GAME ADMIN'),
+    h('h1', null, 'LLOYDS GAME ADMIN'),
     h('div', null,
       h('span', { class: 'user' }, profile.display_name || user.email),
       h('button', { onclick: signOut, style: 'margin-left:12px;' }, 'Sign Out')
@@ -292,7 +292,7 @@ function render() {
 function renderLogin() {
   let email = '', pw = '';
   const box = h('div', { class: 'login-box' },
-    h('h2', null, '⛳ Lloyd\u2019s Game Admin'),
+    h('h2', null, '⛳ Lloyds Game Admin'),
     h('div', { class: 'field' },
       h('label', null, 'Email'),
       h('input', { type: 'email', placeholder: 'you@example.com', oninput: e => { email = e.target.value; } })
