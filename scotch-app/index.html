@@ -3537,12 +3537,10 @@ function renderRound() {
   // Hole header — shows tally BEFORE this hole (who's up, not raw scores)
   root.appendChild(h('div', { class: 'hole-header' },
     h('div', { class: 'hole-number' }, String(hIdx + 1)),
-    h('div', { style: 'font-size:13px;font-weight:700;color:rgba(255,255,255,0.85);margin-top:6px;display:flex;gap:14px;justify-content:center;' },
-      h('span', null, 'Top: ', h('span', { style: `color:${pressSlashColor(result.mode === '5man' ? result.game1.top : result.top, holesBefore)};` },
-        pressSlashStr(result.mode === '5man' ? result.game1.top : result.top, holesBefore))),
+    h('div', { style: 'font-size:13px;font-weight:700;color:rgba(255,255,255,0.9);margin-top:6px;display:flex;gap:14px;justify-content:center;' },
+      h('span', null, `Top: ${pressSlashStr(result.mode === '5man' ? result.game1.top : result.top, holesBefore)}`),
       h('span', null, `Mid: ${tallyStr(beforeMid)}`),
-      h('span', null, 'Bot: ', h('span', { style: `color:${pressSlashColor(result.mode === '5man' ? result.game1.bottom : result.bottom, holesBefore)};` },
-        pressSlashStr(result.mode === '5man' ? result.game1.bottom : result.bottom, holesBefore)))
+      h('span', null, `Bot: ${pressSlashStr(result.mode === '5man' ? result.game1.bottom : result.bottom, holesBefore)}`)
     ),
     h('div', { class: 'hole-info' },
       h('span', null, 'PAR ', h('strong', null, String(hole.par))),
