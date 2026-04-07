@@ -2846,6 +2846,68 @@ function renderLiveView() {
     })
   ));
 
+  // Cumulative running match — per-hole who's up in all 3 games
+  const matchRows = [];
+  for (let i = 0; i < 18; i++) {
+    if (!allPlayers.some(p => p.scores[i] != null)) continue;
+    const thru = Array.from({ length: i + 1 }, (_, k) => k);
+
+    // Middle cumulative
+    function midThru(pts) { let a=0,b=0; for(const hi of thru){const p=pts.points[hi];if(p){a+=p.a;b+=p.b;}} return {a,b}; }
+    const mt = result.mode==='5man'?{a:midThru(result.game1).a+midThru(result.game2).a,b:midThru(result.game1).b+midThru(result.game2).b}:midThru(result);
+    const midStr3 = mt.a===mt.b?'Even':mt.a>mt.b?`${tl.a} +${mt.a-mt.b}`:`${tl.b} +${mt.b-mt.a}`;
+    const midClr3 = mt.a>mt.b?'var(--team-a-light)':mt.b>mt.a?'var(--team-b-light)':'var(--muted)';
+
+    // Top/Bot cumulative with slashes (current nine only)
+    function slashThru(game) {
+      const nineEnd = i<=8?8:17;
+      const segs=[...game.segments.filter(s=>s.name!=='Overall'&&s.endHole===nineEnd),...game.presses.filter(p=>p.endHole===nineEnd)];
+      const parts=[];
+      for(const seg of segs){let a=0,b=0;for(const p of seg.points){if(thru.includes(p.h)){a+=p.a;b+=p.b;}}if(seg.points.filter(p=>thru.includes(p.h)).length===0)continue;const d=a-b;parts.push(d===0?'E':d>0?`+${d}`:`${d}`);}
+      return parts.length===0?'Even':parts.join('/');
+    }
+    function slashWho(game) {
+      const nineEnd = i<=8?8:17;
+      const main=game.segments.find(s=>s.name!=='Overall'&&s.endHole===nineEnd);
+      if(!main)return '';
+      let a=0,b=0;for(const p of main.points){if(thru.includes(p.h)){a+=p.a;b+=p.b;}}
+      return a>b?tl.a:b>a?tl.b:'';
+    }
+    const tg=result.mode==='5man'?result.game1.top:result.top;
+    const bg=result.mode==='5man'?result.game1.bottom:result.bottom;
+
+    if (i===9) {
+      matchRows.push(h('tr',{style:'background:var(--bg);'},h('td',{colspan:'4',style:'text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:700;padding:6px;'},'— Back 9 —')));
+    }
+    matchRows.push(h('tr', null,
+      h('td', { style: 'font-weight:700;' }, String(i+1)),
+      h('td', { style: 'text-align:left;font-size:11px;' },
+        slashWho(tg) ? h('span',{style:'color:var(--muted);font-size:9px;'},slashWho(tg)+' ') : null,
+        h('span',{style:'font-weight:700;'},slashThru(tg))
+      ),
+      h('td', { style: `text-align:left;font-size:11px;color:${midClr3};font-weight:700;` }, midStr3),
+      h('td', { style: 'text-align:left;font-size:11px;' },
+        slashWho(bg) ? h('span',{style:'color:var(--muted);font-size:9px;'},slashWho(bg)+' ') : null,
+        h('span',{style:'font-weight:700;'},slashThru(bg))
+      )
+    ));
+  }
+
+  root.appendChild(h('div', { class: 'card' },
+    h('h2', null, 'Match Progress'),
+    h('div', { style: 'overflow-x:auto;' },
+      h('table', { class: 'totals-table', style: 'font-size:12px;' },
+        h('thead', null, h('tr', null,
+          h('th', null, 'H'),
+          h('th', { style: 'text-align:left;' }, 'Top'),
+          h('th', { style: 'text-align:left;' }, 'Middle'),
+          h('th', { style: 'text-align:left;' }, 'Bottom')
+        )),
+        h('tbody', null, ...matchRows)
+      )
+    )
+  ));
+
   // Scorecard
   const courseHoles = liveRound.course?.holes || [];
   root.appendChild(h('div', { class: 'card' },
