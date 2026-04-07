@@ -1398,8 +1398,8 @@ function renderScoreRow(player, hIdx, round, team) {
       h('button', { onclick: () => {
         const par = round.course.holes[hIdx].par;
         if (player.scores[hIdx] == null) {
-          // First tap down = bogey
-          player.scores[hIdx] = par + 1;
+          // First tap down = birdie
+          player.scores[hIdx] = par - 1;
         } else {
           player.scores[hIdx] = Math.max(1, player.scores[hIdx] - 1);
         }
