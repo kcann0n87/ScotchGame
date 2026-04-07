@@ -1103,30 +1103,29 @@ function renderRound() {
   function tallyClr(t) { return t.a > t.b ? 'var(--team-a)' : t.b > t.a ? 'var(--team-b)' : 'rgba(255,255,255,0.7)'; }
 
   // Build slash-separated press tally for top/bottom games
-  // e.g. "+4/-1" means main up 4, press down 1
+  // Only shows segments for the CURRENT nine (front or back based on current hole)
   function pressSlashStr(game, holes) {
+    const currentNineEnd = hIdx <= 8 ? 8 : 17;
     const segs = [
-      ...game.segments.filter(s => s.name !== 'Overall'),
-      ...game.presses
+      ...game.segments.filter(s => s.name !== 'Overall' && s.endHole === currentNineEnd),
+      ...game.presses.filter(p => p.endHole === currentNineEnd)
     ];
     const parts = [];
     for (const seg of segs) {
       let a = 0, b = 0;
       for (const p of seg.points) { if (holes.includes(p.h)) { a += p.a; b += p.b; } }
+      if (seg.points.filter(p => holes.includes(p.h)).length === 0) continue;
       const diff = a - b;
-      if (a === 0 && b === 0 && seg.points.filter(p => holes.includes(p.h)).length === 0) continue; // no data for this seg
       parts.push(diff === 0 ? 'E' : diff > 0 ? `+${diff}` : `${diff}`);
     }
     return parts.length === 0 ? 'Even' : parts.join('/');
   }
   function pressSlashColor(game, holes) {
-    // Use main front/back segment color
-    const front = game.segments.find(s => s.name === 'Front');
-    const back = game.segments.find(s => s.name === 'Back');
+    const currentNineEnd = hIdx <= 8 ? 8 : 17;
+    const mainSeg = game.segments.find(s => s.name !== 'Overall' && s.endHole === currentNineEnd);
     let a = 0, b = 0;
-    for (const seg of [front, back]) {
-      if (!seg) continue;
-      for (const p of seg.points) { if (holes.includes(p.h)) { a += p.a; b += p.b; } }
+    if (mainSeg) {
+      for (const p of mainSeg.points) { if (holes.includes(p.h)) { a += p.a; b += p.b; } }
     }
     return a > b ? 'var(--team-a)' : b > a ? 'var(--team-b)' : 'var(--muted)';
   }
@@ -1677,20 +1676,22 @@ function renderSummary() {
     ));
   }
 
-  // Per-player totals banner
-  root.appendChild(h('div', { class: 'card', style: 'background:var(--green);color:white;' },
-    h('h2', { style: 'color:white;' }, 'Final'),
-    h('div', { style: 'display:flex;flex-wrap:wrap;justify-content:space-around;padding:8px 0;gap:12px;' },
-      ...allPlayers.map(p => {
-        const amt = adjustedPerPlayer[p.id] || 0;
-        return h('div', { style: 'text-align:center;min-width:80px;' },
-          h('div', { style: 'font-size:12px;opacity:0.8;' }, p.name.split(' ')[0]),
-          h('div', { style: 'font-size:24px;font-weight:900;' },
-            amt === 0 ? '$0' : amt > 0 ? `+$${amt}` : `-$${Math.abs(amt)}`)
-        );
-      })
-    )
-  ));
+  // Per-player totals banner — only show winners
+  const winners = allPlayers.filter(p => (adjustedPerPlayer[p.id] || 0) > 0);
+  if (winners.length > 0) {
+    root.appendChild(h('div', { class: 'card', style: 'background:var(--green);color:white;' },
+      h('h2', { style: 'color:white;' }, 'Winners'),
+      h('div', { style: 'display:flex;flex-wrap:wrap;justify-content:space-around;padding:8px 0;gap:12px;' },
+        ...winners.map(p => {
+          const amt = adjustedPerPlayer[p.id] || 0;
+          return h('div', { style: 'text-align:center;min-width:80px;' },
+            h('div', { style: 'font-size:14px;opacity:0.9;' }, p.name.split(' ')[0]),
+            h('div', { style: 'font-size:28px;font-weight:900;' }, `+$${amt}`)
+          );
+        })
+      )
+    ));
+  }
 
   // Player scores card (gross + net totals for each player)
   root.appendChild(h('div', { class: 'card' },
@@ -1741,8 +1742,8 @@ function renderSummary() {
         prompt('Copy this:', text);
       }
     }}, '📋 Copy Summary to Text'),
-    // Submit for Review (only when round is complete and not yet submitted)
-    r.roundComplete && !r.cloudSavedId && state.authUser && typeof SupabaseClient !== 'undefined' && SupabaseClient.isConfigured()
+    // Submit for Review
+    !r.cloudSavedId && state.authUser && typeof SupabaseClient !== 'undefined' && SupabaseClient.isConfigured()
       ? h('button', { class: 'btn gold', style: 'margin-top:10px;', onclick: async () => {
           try {
             r.cloudSavedId = 'pending';
