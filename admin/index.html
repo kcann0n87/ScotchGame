@@ -314,6 +314,8 @@ async function init() {
       return;
     }
     db = lib.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    // Refresh session first to avoid stale tokens
+    await db.auth.refreshSession();
     const { data: { session } } = await db.auth.getSession();
     if (session) {
       user = session.user;
@@ -536,7 +538,13 @@ async function recordPayment(userId, amount, note) {
 function render() {
   root.innerHTML = '';
   if (!user) return renderLogin();
-  if (!profile || !profile.is_admin) return renderAccessDenied();
+  if (!profile) {
+    // Profile not loaded yet — show loading instead of Access Denied
+    root.innerHTML = '<div class="app"><div class="login-box"><h2>⛳ Lloyds Game Admin</h2><p>Loading profile...</p></div></div>';
+    loadProfile().then(() => render());
+    return;
+  }
+  if (!profile.is_admin) return renderAccessDenied();
   if (!allProfiles) { loadAllData(); root.innerHTML = '<div class="app"><p>Loading...</p></div>'; return; }
 
   // Header
