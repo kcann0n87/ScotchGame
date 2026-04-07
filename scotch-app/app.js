@@ -604,6 +604,20 @@ function renderCourseEdit() {
 let newRoundDraft = null;
 function ensureDraft() {
   if (!newRoundDraft) {
+    // Refresh profiles from server to get latest handicaps
+    if (typeof SupabaseClient !== 'undefined' && SupabaseClient.isConfigured() && state.authUser) {
+      state._allProfiles = null;
+      state._profilesLoading = false;
+      // Reload own profile in background
+      SupabaseClient.searchUsersByName('').then(data => {
+        state._allProfiles = data || [];
+        // Update own profile handicap if changed
+        const myLatest = (data || []).find(p => p.id === state.authUser.id);
+        if (myLatest && state.authProfile) {
+          state.authProfile.handicap = myLatest.handicap;
+        }
+      }).catch(() => {});
+    }
     // Pre-fill Player 1 with the logged-in user's profile
     const me = state.authProfile;
     const myUser = state.authUser;
