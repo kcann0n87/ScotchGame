@@ -2656,10 +2656,10 @@ function newRound(course, players, teamAIds, teamBIds, mode, playhouse, startNin
 }
 
 // ---------- Team name helpers ----------
-// Returns first names joined by "/" for display, e.g. "Kyle/Jordan"
+// Returns first initial of each player joined by "/", e.g. "K/G"
 function teamLabel(players) {
   if (!players || players.length === 0) return '?';
-  return players.map(p => (p.name || '?').split(' ')[0]).join('/');
+  return players.map(p => (p.name || '?')[0].toUpperCase()).join('/');
 }
 function teamLabels(round) {
   return {
