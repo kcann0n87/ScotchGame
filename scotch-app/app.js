@@ -2463,7 +2463,7 @@ function renderAccount() {
     h('button', { class: 'btn secondary', style: 'margin-top:16px;',
       onclick: () => { state.screen = 'history'; render(); } }, 'Round History'),
     h('button', { class: 'btn secondary', style: 'margin-top:8px;',
-      onclick: () => { state.screen = 'stats'; render(); } }, 'Lifetime Stats'),
+      onclick: () => { state.screen = 'stats'; render(); } }, 'Stats'),
     h('button', { class: 'btn danger', style: 'margin-top:16px;', onclick: async () => {
       await SupabaseClient.signOut();
       state.screen = 'home';
@@ -2537,7 +2537,7 @@ function renderStats() {
   root.appendChild(h('div', { class: 'header' },
     h('div', { class: 'header-row' },
       h('button', { class: 'back-btn', onclick: () => { state.screen = 'account'; render(); } }, '← Back'),
-      h('h1', null, 'LIFETIME STATS'),
+      h('h1', null, 'STATS'),
       h('span', { style: 'width:50px;' })
     )
   ));
@@ -2553,7 +2553,7 @@ function renderStats() {
   const s = statsCache;
   const netColor = s.netTotal > 0 ? 'var(--green-light)' : s.netTotal < 0 ? 'var(--team-b)' : 'var(--muted)';
   root.appendChild(h('div', { class: 'result-banner' },
-    h('div', { class: 'label' }, 'Lifetime Net'),
+    h('div', { class: 'label' }, 'Current Balance'),
     h('div', { class: 'amount', style: `color:${s.netTotal < 0 ? '#ffb3ad' : 'white'};` },
       s.netTotal === 0 ? 'Even' : s.netTotal > 0 ? `+$${s.netTotal}` : `−$${Math.abs(s.netTotal)}`
     )
