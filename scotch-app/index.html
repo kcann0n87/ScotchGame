@@ -3231,7 +3231,20 @@ function renderNewRound() {
                   )
                 : h('div', null,
                     h('input', { type: 'text', value: nameVal, placeholder: `Player ${i+1}`,
-                      oninput: e => { p.name = e.target.value; render(true); }
+                      id: `player-name-${i}`,
+                      oninput: e => {
+                        p.name = e.target.value;
+                        // Debounce render + restore focus for mobile keyboard
+                        clearTimeout(p._nameTimer);
+                        p._nameTimer = setTimeout(() => {
+                          const pos = e.target.selectionStart;
+                          render(true);
+                          requestAnimationFrame(() => {
+                            const el = document.getElementById(`player-name-${i}`);
+                            if (el) { el.focus(); el.setSelectionRange(pos, pos); }
+                          });
+                        }, 500);
+                      }
                     }),
                     suggestions.length > 0
                       ? h('div', { style: 'position:absolute;left:0;right:0;top:100%;z-index:50;background:white;border:1px solid var(--border);border-radius:0 0 var(--radius) var(--radius);box-shadow:var(--shadow-md);max-height:200px;overflow-y:auto;' },
