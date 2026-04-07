@@ -1335,17 +1335,45 @@ function renderHandicaps(app) {
           h('div', { style: 'display:flex;gap:10px;' },
             h('div', { class: 'field', style: 'flex:2;' },
               h('label', null, 'Course'),
-              h('input', { type: 'text', placeholder: 'Bear Lakes CC', oninput: e => { manualCourse = e.target.value; } })
+              h('select', { style: 'width:100%;', onchange: e => {
+                manualCourse = e.target.value;
+                // Auto-set tee to first available
+                const tees = getCourseTees(manualCourse);
+                if (tees.length > 0) {
+                  manualTee = tees[0].name;
+                  const r = getTeeRating(manualCourse, manualTee);
+                  if (r) manualRating = String(r);
+                }
+                render();
+              } },
+                h('option', { value: '' }, '-- Select Course --'),
+                ...COURSES.map(c => h('option', { value: c.name, ...(manualCourse === c.name ? { selected: 'selected' } : {}) }, c.name))
+              )
             ),
             h('div', { class: 'field', style: 'flex:1;' },
               h('label', null, 'Tee'),
-              h('input', { type: 'text', placeholder: 'Blue', oninput: e => { manualTee = e.target.value; } })
+              (() => {
+                const tees = getCourseTees(manualCourse);
+                if (tees.length > 0) {
+                  return h('select', { style: 'width:100%;', onchange: e => {
+                    manualTee = e.target.value;
+                    const r = getTeeRating(manualCourse, manualTee);
+                    manualRating = r ? String(r) : '';
+                    render();
+                  } },
+                    ...tees.map(t => h('option', { value: t.name, ...(manualTee === t.name ? { selected: 'selected' } : {}) }, t.name))
+                  );
+                }
+                return h('input', { type: 'text', value: manualTee, placeholder: 'Blue', oninput: e => { manualTee = e.target.value; } });
+              })()
             )
           ),
           h('div', { style: 'display:flex;gap:10px;' },
             h('div', { class: 'field', style: 'flex:1;' },
               h('label', null, 'Course Rating'),
-              h('input', { type: 'number', step: '0.1', placeholder: '72.5', oninput: e => { manualRating = e.target.value; } })
+              h('input', { type: 'number', step: '0.1', value: manualRating, placeholder: '72.5',
+                style: manualRating ? 'font-weight:700;' : '',
+                oninput: e => { manualRating = e.target.value; } })
             ),
             h('div', { class: 'field', style: 'flex:1;' },
               h('label', null, 'Gross Score'),
