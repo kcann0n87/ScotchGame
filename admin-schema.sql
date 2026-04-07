@@ -84,5 +84,9 @@ CREATE POLICY "courses_admin_all" ON courses FOR ALL
   USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_admin = true))
   WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_admin = true));
 
--- 5. Set admin flag for the primary admin
+-- 5. Add status column to rounds for admin approval
+ALTER TABLE rounds ADD COLUMN IF NOT EXISTS status text DEFAULT 'pending';
+CREATE INDEX IF NOT EXISTS rounds_status_idx ON rounds (status);
+
+-- 6. Set admin flag for the primary admin
 UPDATE profiles SET is_admin = true WHERE email = 'kcannonpoker@gmail.com';

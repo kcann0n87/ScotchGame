@@ -2137,6 +2137,7 @@ const SupabaseClient = (() => {
         game_type: round.gameType || 'scotch',
         game_type_1: round.gameType1 || null,
         game_type_2: round.gameType2 || null,
+        status: 'pending',
         data: round,
         settlement: settlement
       })
@@ -2167,13 +2168,7 @@ const SupabaseClient = (() => {
       }
     }
 
-    // Auto-recalculate handicaps for all linked players in this round
-    try {
-      await recalcHandicapsForPlayers(players.filter(p => p.userId).map(p => p.userId));
-    } catch (e) {
-      console.warn('Auto handicap recalc failed:', e);
-    }
-
+    // Handicap recalc happens after admin approval, not on submit
     return roundRow;
   }
 
@@ -2254,13 +2249,17 @@ const SupabaseClient = (() => {
     if (!_client || !_user) return null;
     const [{ data: playerRows }, { data: paymentRows }] = await Promise.all([
       _client.from('round_players')
-        .select('round_id, final_amount, rounds(mode, game_type, course_name)')
+        .select('round_id, final_amount, rounds(mode, game_type, course_name, status)')
         .eq('user_id', _user.id),
       _client.from('payments')
         .select('amount')
         .eq('user_id', _user.id)
     ]);
-    const rows = playerRows || [];
+    // Only count approved rounds (skip pending/rejected)
+    const rows = (playerRows || []).filter(r => {
+      const status = r.rounds?.status;
+      return !status || status === 'approved' || status === 'manual';
+    });
     const stats = {
       roundsPlayed: rows.length,
       totalWon: 0,
@@ -3852,24 +3851,7 @@ function renderSummary() {
   const result = Scoring.computeRound(r);
   const settlement = Scoring.settle(r, result);
 
-  // Cloud sync: only save when round is complete (came from Finish button, not mid-round Σ)
-  if (!r.cloudSavedId && r.roundComplete && typeof SupabaseClient !== 'undefined' && SupabaseClient.isConfigured() && state.authUser) {
-    r.cloudSavedId = 'pending';
-    SupabaseClient.saveRound(r, { ...settlement, perPlayer: settlement.perPlayer })
-      .then(row => {
-        if (row) {
-          r.cloudSavedId = row.id;
-          // Invalidate caches so next visit reloads
-          historyCache = null;
-          statsCache = null;
-          save();
-        }
-      })
-      .catch(err => {
-        console.warn('Round save failed:', err);
-        r.cloudSavedId = null;
-      });
-  }
+  // Cloud sync is now manual — user taps "Submit for Review" button (below)
 
   // Ensure golf fee state exists on the round
   if (!r.golfFees) r.golfFees = {};
@@ -4082,6 +4064,30 @@ function renderSummary() {
         prompt('Copy this:', text);
       }
     }}, '📋 Copy Summary to Text'),
+    // Submit for Review (only when round is complete and not yet submitted)
+    r.roundComplete && !r.cloudSavedId && state.authUser && typeof SupabaseClient !== 'undefined' && SupabaseClient.isConfigured()
+      ? h('button', { class: 'btn gold', style: 'margin-top:10px;', onclick: async () => {
+          try {
+            r.cloudSavedId = 'pending';
+            const row = await SupabaseClient.saveRound(r, { ...settlement, perPlayer: adjustedPerPlayer });
+            if (row) {
+              r.cloudSavedId = row.id;
+              historyCache = null;
+              statsCache = null;
+              save();
+              alert('Round submitted for admin review!');
+              render(true);
+            }
+          } catch (err) {
+            console.warn('Submit failed:', err);
+            r.cloudSavedId = null;
+            alert('Failed to submit: ' + (err.message || err));
+          }
+        }}, '✓ Submit for Review')
+      : null,
+    r.cloudSavedId && r.cloudSavedId !== 'pending'
+      ? h('div', { class: 'info', style: 'margin-top:10px;text-align:center;' }, '✓ Submitted — waiting for admin approval')
+      : null,
     h('button', { class: 'btn danger', style: 'margin-top:10px;', onclick: () => {
       if (confirm('End round and clear?')) {
         state.round = null;

@@ -1460,24 +1460,7 @@ function renderSummary() {
   const result = Scoring.computeRound(r);
   const settlement = Scoring.settle(r, result);
 
-  // Cloud sync: only save when round is complete (came from Finish button, not mid-round Σ)
-  if (!r.cloudSavedId && r.roundComplete && typeof SupabaseClient !== 'undefined' && SupabaseClient.isConfigured() && state.authUser) {
-    r.cloudSavedId = 'pending';
-    SupabaseClient.saveRound(r, { ...settlement, perPlayer: settlement.perPlayer })
-      .then(row => {
-        if (row) {
-          r.cloudSavedId = row.id;
-          // Invalidate caches so next visit reloads
-          historyCache = null;
-          statsCache = null;
-          save();
-        }
-      })
-      .catch(err => {
-        console.warn('Round save failed:', err);
-        r.cloudSavedId = null;
-      });
-  }
+  // Cloud sync is now manual — user taps "Submit for Review" button (below)
 
   // Ensure golf fee state exists on the round
   if (!r.golfFees) r.golfFees = {};
@@ -1690,6 +1673,30 @@ function renderSummary() {
         prompt('Copy this:', text);
       }
     }}, '📋 Copy Summary to Text'),
+    // Submit for Review (only when round is complete and not yet submitted)
+    r.roundComplete && !r.cloudSavedId && state.authUser && typeof SupabaseClient !== 'undefined' && SupabaseClient.isConfigured()
+      ? h('button', { class: 'btn gold', style: 'margin-top:10px;', onclick: async () => {
+          try {
+            r.cloudSavedId = 'pending';
+            const row = await SupabaseClient.saveRound(r, { ...settlement, perPlayer: adjustedPerPlayer });
+            if (row) {
+              r.cloudSavedId = row.id;
+              historyCache = null;
+              statsCache = null;
+              save();
+              alert('Round submitted for admin review!');
+              render(true);
+            }
+          } catch (err) {
+            console.warn('Submit failed:', err);
+            r.cloudSavedId = null;
+            alert('Failed to submit: ' + (err.message || err));
+          }
+        }}, '✓ Submit for Review')
+      : null,
+    r.cloudSavedId && r.cloudSavedId !== 'pending'
+      ? h('div', { class: 'info', style: 'margin-top:10px;text-align:center;' }, '✓ Submitted — waiting for admin approval')
+      : null,
     h('button', { class: 'btn danger', style: 'margin-top:10px;', onclick: () => {
       if (confirm('End round and clear?')) {
         state.round = null;

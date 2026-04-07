@@ -172,12 +172,14 @@ function computeAllHandicaps() {
 }
 
 function computePlayerHandicap(userId) {
-  // Find all rounds this player participated in, sorted by date desc
+  // Find all approved/manual rounds this player participated in, sorted by date desc
   const playerRPs = allRoundPlayers
     .filter(rp => rp.user_id === userId)
     .map(rp => {
       const round = allRounds.find(r => r.id === rp.round_id);
-      return round ? { rp, round } : null;
+      if (!round) return null;
+      if (round.status === 'pending' || round.status === 'rejected') return null;
+      return { rp, round };
     })
     .filter(Boolean)
     .sort((a, b) => new Date(b.round.played_at) - new Date(a.round.played_at));
@@ -259,11 +261,12 @@ async function applyHandicaps() {
 function getPlayerLedger(userId) {
   const entries = [];
 
-  // Round entries
+  // Round entries (only approved/manual rounds count)
   const rps = allRoundPlayers.filter(rp => rp.user_id === userId);
   for (const rp of rps) {
     const round = allRounds.find(r => r.id === rp.round_id);
     if (!round) continue;
+    if (round.status === 'pending' || round.status === 'rejected') continue;
     entries.push({
       date: new Date(round.played_at),
       type: 'round',
@@ -896,10 +899,64 @@ async function saveEnteredRound() {
 
 // ==================== DASHBOARD TAB ====================
 function renderDashboard(app) {
+  // Pending rounds awaiting approval
+  const pendingRounds = allRounds.filter(r => r.status === 'pending');
+  if (pendingRounds.length > 0) {
+    app.appendChild(h('div', { class: 'card', style: 'margin-top:16px;border:2px solid var(--gold);' },
+      h('h2', null, `Pending Rounds (${pendingRounds.length})`),
+      h('div', { style: 'font-size:12px;color:var(--muted);margin-bottom:12px;' },
+        'These rounds have been submitted but not yet approved. They do not count toward handicaps or the ledger until approved.'),
+      h('table', null,
+        h('thead', null, h('tr', null,
+          h('th', null, 'Date'),
+          h('th', null, 'Course'),
+          h('th', null, 'Scorer'),
+          h('th', null, 'Players'),
+          h('th', null, '')
+        )),
+        h('tbody', null,
+          ...pendingRounds.map(r => {
+            const scorer = allProfiles.find(p => p.id === r.scorer_id);
+            const rps = allRoundPlayers.filter(rp => rp.round_id === r.id);
+            const playerNames = rps.map(rp => rp.display_name).join(', ');
+            return h('tr', null,
+              h('td', null, new Date(r.played_at).toLocaleDateString()),
+              h('td', null, h('strong', null, r.course_name)),
+              h('td', { style: 'font-size:12px;' }, scorer?.display_name || '—'),
+              h('td', { style: 'font-size:12px;' }, playerNames || '—'),
+              h('td', null,
+                h('div', { style: 'display:flex;gap:4px;' },
+                  h('button', { class: 'btn sm', onclick: async () => {
+                    await db.from('rounds').update({ status: 'approved' }).eq('id', r.id);
+                    // Recalculate handicaps for players in this round
+                    const playerIds = rps.filter(rp => rp.user_id).map(rp => rp.user_id);
+                    r.status = 'approved';
+                    alert('Round approved!');
+                    allRounds = null;
+                    handicapResults = null;
+                    await loadAllData();
+                  } }, '✓ Approve'),
+                  h('button', { class: 'btn sm danger', onclick: async () => {
+                    if (!confirm('Reject this round? It will be hidden from all calculations.')) return;
+                    await db.from('rounds').update({ status: 'rejected' }).eq('id', r.id);
+                    r.status = 'rejected';
+                    allRounds = null;
+                    await loadAllData();
+                  } }, '✗ Reject')
+                )
+              )
+            );
+          })
+        )
+      )
+    ));
+  }
+
   const board = getLeaderboard();
-  const totalRounds = allRounds.length;
+  const approvedRounds = allRounds.filter(r => r.status === 'approved' || r.status === 'manual' || !r.status);
+  const totalRounds = approvedRounds.length;
   const totalPlayers = allProfiles.length;
-  const lastRound = allRounds[0];
+  const lastRound = approvedRounds[0];
 
   app.appendChild(h('div', { class: 'stats-row', style: 'margin-top:16px;' },
     h('div', { class: 'stat-box' },

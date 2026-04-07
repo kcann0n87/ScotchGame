@@ -205,6 +205,7 @@ const SupabaseClient = (() => {
         game_type: round.gameType || 'scotch',
         game_type_1: round.gameType1 || null,
         game_type_2: round.gameType2 || null,
+        status: 'pending',
         data: round,
         settlement: settlement
       })
@@ -235,13 +236,7 @@ const SupabaseClient = (() => {
       }
     }
 
-    // Auto-recalculate handicaps for all linked players in this round
-    try {
-      await recalcHandicapsForPlayers(players.filter(p => p.userId).map(p => p.userId));
-    } catch (e) {
-      console.warn('Auto handicap recalc failed:', e);
-    }
-
+    // Handicap recalc happens after admin approval, not on submit
     return roundRow;
   }
 
@@ -322,13 +317,17 @@ const SupabaseClient = (() => {
     if (!_client || !_user) return null;
     const [{ data: playerRows }, { data: paymentRows }] = await Promise.all([
       _client.from('round_players')
-        .select('round_id, final_amount, rounds(mode, game_type, course_name)')
+        .select('round_id, final_amount, rounds(mode, game_type, course_name, status)')
         .eq('user_id', _user.id),
       _client.from('payments')
         .select('amount')
         .eq('user_id', _user.id)
     ]);
-    const rows = playerRows || [];
+    // Only count approved rounds (skip pending/rejected)
+    const rows = (playerRows || []).filter(r => {
+      const status = r.rounds?.status;
+      return !status || status === 'approved' || status === 'manual';
+    });
     const stats = {
       roundsPlayed: rows.length,
       totalWon: 0,
