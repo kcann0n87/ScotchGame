@@ -3537,11 +3537,30 @@ function renderRound() {
   // Hole header — shows tally BEFORE this hole (who's up, not raw scores)
   root.appendChild(h('div', { class: 'hole-header' },
     h('div', { class: 'hole-number' }, String(hIdx + 1)),
-    h('div', { style: 'font-size:13px;font-weight:700;color:rgba(255,255,255,0.9);margin-top:6px;display:flex;gap:14px;justify-content:center;' },
-      h('span', null, `Top: ${pressSlashStr(result.mode === '5man' ? result.game1.top : result.top, holesBefore)}`),
-      h('span', null, `Mid: ${tallyStr(beforeMid)}`),
-      h('span', null, `Bot: ${pressSlashStr(result.mode === '5man' ? result.game1.bottom : result.bottom, holesBefore)}`)
-    ),
+    (() => {
+      const topG = result.mode === '5man' ? result.game1.top : result.top;
+      const botG = result.mode === '5man' ? result.game1.bottom : result.bottom;
+      const topMain = sumGameHoles(topG, holesBefore);
+      const botMain = sumGameHoles(botG, holesBefore);
+      const topWho = topMain.a > topMain.b ? tally.a : topMain.b > topMain.a ? tally.b : '';
+      const botWho = botMain.a > botMain.b ? tally.a : botMain.b > botMain.a ? tally.b : '';
+      return h('div', { style: 'margin-top:6px;display:flex;gap:14px;justify-content:center;color:rgba(255,255,255,0.9);' },
+        h('div', { style: 'text-align:center;' },
+          h('div', { style: 'font-size:10px;opacity:0.7;' }, 'Top'),
+          topWho ? h('div', { style: 'font-size:10px;opacity:0.7;' }, topWho) : null,
+          h('div', { style: 'font-size:14px;font-weight:700;' }, pressSlashStr(topG, holesBefore))
+        ),
+        h('div', { style: 'text-align:center;' },
+          h('div', { style: 'font-size:10px;opacity:0.7;' }, 'Mid'),
+          h('div', { style: 'font-size:14px;font-weight:700;' }, tallyStr(beforeMid))
+        ),
+        h('div', { style: 'text-align:center;' },
+          h('div', { style: 'font-size:10px;opacity:0.7;' }, 'Bot'),
+          botWho ? h('div', { style: 'font-size:10px;opacity:0.7;' }, botWho) : null,
+          h('div', { style: 'font-size:14px;font-weight:700;' }, pressSlashStr(botG, holesBefore))
+        )
+      );
+    })(),
     h('div', { class: 'hole-info' },
       h('span', null, 'PAR ', h('strong', null, String(hole.par))),
       h('span', null, 'HCP ', h('strong', null, String(hole.si)))
