@@ -482,7 +482,7 @@ function renderCourses(app) {
               scorecardRows.push(h('tr', null,
                 h('td', { style: 'font-weight:700;' }, String(hole + 1)),
                 h('td', null, h('input', { type: 'number', value: editPars[hole], min: 3, max: 6, style: 'width:45px;text-align:center;padding:4px;',
-                  oninput: e => { editPars[hole] = parseInt(e.target.value) || 4; } })),
+                  oninput: e => { editPars[hole] = parseInt(e.target.value) || 4; render(); } })),
                 h('td', null, h('input', { type: 'number', value: editSi[hole], min: 1, max: 18, style: 'width:45px;text-align:center;padding:4px;font-weight:700;',
                   oninput: e => { editSi[hole] = parseInt(e.target.value) || 1; render(); } })),
                 ...editTees.map(t => {
