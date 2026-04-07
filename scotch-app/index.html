@@ -2712,8 +2712,8 @@ function render(preserveScroll) {
   else if (state.screen === 'stats') renderStats();
   else if (state.screen === 'friends') renderFriends();
   else if (state.screen === 'liveView') renderLiveView();
-  // Restore scroll position when re-rendering the same screen
-  if (preserveScroll) requestAnimationFrame(() => window.scrollTo(0, scrollY));
+  // Restore scroll position when re-rendering the same screen (or live view)
+  if (preserveScroll || state.screen === 'liveView') requestAnimationFrame(() => window.scrollTo(0, scrollY));
 }
 
 // ---------- Home screen ----------
@@ -5091,7 +5091,7 @@ function renderLiveView() {
   // Banner with course name and middle game score
   root.appendChild(h('div', { class: 'result-banner' },
     h('div', { class: 'label' }, liveRound.course?.name || 'Live Round'),
-    h('div', { class: 'amount', style: `color:${midClr === 'var(--muted)' ? 'white' : midClr};` }, midStr)
+    h('div', { class: 'amount' }, midStr)
   ));
 
   // Game tallies card
@@ -5440,7 +5440,7 @@ async function init() {
           (shareRow) => {
             if (shareRow && shareRow.data) {
               state.liveViewData = shareRow.data;
-              render();
+              render(true);
             }
           }
         );
