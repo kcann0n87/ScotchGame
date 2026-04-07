@@ -5038,37 +5038,139 @@ function renderLiveView() {
   const result = Scoring.computeRound(liveRound);
   const settlement = Scoring.settle(liveRound, result);
 
-  // Show a simplified live view: player scores, current hole, running points
   const allPlayers = [...liveRound.teamA, ...liveRound.teamB];
-  const completedHoles = allPlayers[0] ? allPlayers[0].scores.filter(s => s != null && s !== liveRound.course?.holes?.[0]?.par).length : 0;
-  const ptsA = result.mode === '5man'
-    ? (result.game1.pointsTotal.a + result.game2.pointsTotal.a)
-    : result.pointsTotal.a;
-  const ptsB = result.mode === '5man'
-    ? (result.game1.pointsTotal.b + result.game2.pointsTotal.b)
-    : result.pointsTotal.b;
+  const tl = teamLabels(liveRound);
 
+  // Find played holes (non-null scores)
+  const playedHoleSet = [];
+  for (let i = 0; i < 18; i++) {
+    if (allPlayers.some(p => p.scores[i] != null)) playedHoleSet.push(i);
+  }
+
+  // Middle game tally (only played holes)
+  function sumMidPlayed(pts) {
+    let a = 0, b = 0;
+    for (const hi of playedHoleSet) { const p = pts.points[hi]; if (p) { a += p.a; b += p.b; } }
+    return { a, b };
+  }
+  const midTally = result.mode === '5man'
+    ? { a: sumMidPlayed(result.game1).a + sumMidPlayed(result.game2).a,
+        b: sumMidPlayed(result.game1).b + sumMidPlayed(result.game2).b }
+    : sumMidPlayed(result);
+  const midStr = midTally.a === midTally.b ? 'Even'
+    : midTally.a > midTally.b ? `${tl.a} +${midTally.a - midTally.b}`
+    : `${tl.b} +${midTally.b - midTally.a}`;
+  const midClr = midTally.a > midTally.b ? 'var(--team-a)' : midTally.b > midTally.a ? 'var(--team-b)' : 'var(--muted)';
+
+  // Top/Bottom press slash tally
+  function liveSlashStr(game) {
+    const segs = [...game.segments.filter(s => s.name !== 'Overall'), ...game.presses];
+    const parts = [];
+    for (const seg of segs) {
+      let a = 0, b = 0;
+      for (const p of seg.points) { if (playedHoleSet.includes(p.h)) { a += p.a; b += p.b; } }
+      if (seg.points.filter(p => playedHoleSet.includes(p.h)).length === 0) continue;
+      const diff = a - b;
+      parts.push(diff === 0 ? 'E' : diff > 0 ? `+${diff}` : `${diff}`);
+    }
+    return parts.length === 0 ? 'Even' : parts.join('/');
+  }
+  function liveSlashClr(game) {
+    const front = game.segments.find(s => s.name === 'Front');
+    const back = game.segments.find(s => s.name === 'Back');
+    let a = 0, b = 0;
+    for (const seg of [front, back]) {
+      if (!seg) continue;
+      for (const p of seg.points) { if (playedHoleSet.includes(p.h)) { a += p.a; b += p.b; } }
+    }
+    return a > b ? 'var(--team-a)' : b > a ? 'var(--team-b)' : 'var(--muted)';
+  }
+  const topGame = result.mode === '5man' ? result.game1.top : result.top;
+  const botGame = result.mode === '5man' ? result.game1.bottom : result.bottom;
+
+  // Banner with course name and middle game score
   root.appendChild(h('div', { class: 'result-banner' },
     h('div', { class: 'label' }, liveRound.course?.name || 'Live Round'),
-    h('div', { class: 'amount' },
-      `${ptsA} – ${ptsB}`)
+    h('div', { class: 'amount', style: `color:${midClr === 'var(--muted)' ? 'white' : midClr};` }, midStr)
   ));
 
+  // Game tallies card
+  root.appendChild(h('div', { style: 'display:flex;justify-content:space-around;padding:12px 14px;margin:0 14px 14px;background:var(--card);border-radius:var(--radius);border:1px solid var(--border-light);font-size:14px;font-weight:700;' },
+    h('div', { style: 'text-align:center;' },
+      h('div', { style: 'font-size:10px;text-transform:uppercase;color:var(--muted);letter-spacing:1px;' }, 'Top'),
+      h('div', { style: `color:${liveSlashClr(topGame)};` }, liveSlashStr(topGame))
+    ),
+    h('div', { style: 'text-align:center;' },
+      h('div', { style: 'font-size:10px;text-transform:uppercase;color:var(--muted);letter-spacing:1px;' }, 'Middle'),
+      h('div', { style: `color:${midClr};` }, midStr)
+    ),
+    h('div', { style: 'text-align:center;' },
+      h('div', { style: 'font-size:10px;text-transform:uppercase;color:var(--muted);letter-spacing:1px;' }, 'Bottom'),
+      h('div', { style: `color:${liveSlashClr(botGame)};` }, liveSlashStr(botGame))
+    )
+  ));
+
+  // Players card
   root.appendChild(h('div', { class: 'card' },
     h('h2', null, 'Players'),
     ...allPlayers.map(p => {
       const amt = settlement.perPlayer?.[p.id] || 0;
-      const gross = p.scores.reduce((a, b) => a + (b || 0), 0);
+      const scored = p.scores.filter(s => s != null);
+      const gross = scored.reduce((a, b) => a + b, 0);
+      const holesPlayed = scored.length;
       const color = amt > 0 ? 'var(--green-light)' : amt < 0 ? 'var(--team-b)' : 'var(--muted)';
       return h('div', { class: `player-card team-${p.team.toLowerCase()}` },
         h('div', { class: 'info' },
           h('div', { class: 'name' }, p.name),
-          h('div', { class: 'hcp' }, `Team ${p.team} · Gross ${gross}`)
+          h('div', { class: 'hcp' }, `Gross ${gross} (${holesPlayed} holes)`)
         ),
         h('div', { style: `font-size:20px;font-weight:900;color:${color};` },
           amt === 0 ? '$0' : (amt > 0 ? `+$${amt}` : `−$${Math.abs(amt)}`))
       );
     })
+  ));
+
+  // Scorecard
+  const courseHoles = liveRound.course?.holes || [];
+  root.appendChild(h('div', { class: 'card' },
+    h('h2', null, 'Scorecard'),
+    h('div', { style: 'overflow-x:auto;' },
+      h('table', { class: 'totals-table', style: 'font-size:12px;' },
+        h('thead', null, h('tr', null,
+          h('th', null, 'H'),
+          h('th', null, 'Par'),
+          ...allPlayers.map(p => h('th', null, p.name.split(' ')[0]))
+        )),
+        h('tbody', null,
+          ...Array(18).fill(0).map((_, i) => {
+            const anyScored = allPlayers.some(p => p.scores[i] != null);
+            if (!anyScored) return null;
+            const par = courseHoles[i]?.par || 4;
+            return h('tr', null,
+              h('td', { style: 'font-weight:700;' }, String(i + 1)),
+              h('td', null, String(par)),
+              ...allPlayers.map(p => {
+                const s = p.scores[i];
+                if (s == null) return h('td', { style: 'color:var(--muted);' }, '–');
+                const diff = s - par;
+                const color = diff < 0 ? 'var(--team-a)' : diff > 0 ? 'var(--team-b)' : '';
+                const weight = diff !== 0 ? 'font-weight:700;' : '';
+                return h('td', { style: `${weight}color:${color || 'inherit'};` }, String(s));
+              })
+            );
+          }).filter(Boolean),
+          // Totals row
+          h('tr', { style: 'font-weight:700;background:var(--bg);' },
+            h('td', null, ''),
+            h('td', null, ''),
+            ...allPlayers.map(p => {
+              const scored = p.scores.filter(s => s != null);
+              return h('td', null, String(scored.reduce((a, b) => a + b, 0)));
+            })
+          )
+        )
+      )
+    )
   ));
 
   root.appendChild(h('div', { style: 'text-align:center;padding:20px;color:var(--muted);font-size:12px;' },
