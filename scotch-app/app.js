@@ -233,7 +233,7 @@ function newRound(course, players, teamAIds, teamBIds, mode, playhouse, startNin
     }
     return {
       ...p,
-      scores: pars.slice(),
+      scores: Array(18).fill(null),
       teesName: p.tees || '',
       siArray: siArray || null
     };
@@ -1397,15 +1397,23 @@ function renderScoreRow(player, hIdx, round, team) {
     h('div', { class: 'stepper' },
       h('button', { onclick: () => {
         const par = round.course.holes[hIdx].par;
-        const cur = player.scores[hIdx] == null ? par : player.scores[hIdx];
-        player.scores[hIdx] = Math.max(1, cur - 1);
+        if (player.scores[hIdx] == null) {
+          // First tap down = bogey
+          player.scores[hIdx] = par + 1;
+        } else {
+          player.scores[hIdx] = Math.max(1, player.scores[hIdx] - 1);
+        }
         render(true);
       }}, '−'),
-      h('div', { class: 'val' }, String(val == null ? round.course.holes[hIdx].par : val)),
+      h('div', { class: 'val', style: val == null ? 'color:var(--muted);' : '' }, val == null ? '–' : String(val)),
       h('button', { onclick: () => {
         const par = round.course.holes[hIdx].par;
-        const cur = player.scores[hIdx] == null ? par : player.scores[hIdx];
-        player.scores[hIdx] = cur + 1;
+        if (player.scores[hIdx] == null) {
+          // First tap up = par
+          player.scores[hIdx] = par;
+        } else {
+          player.scores[hIdx] = player.scores[hIdx] + 1;
+        }
         render(true);
       }}, '+')
     )
