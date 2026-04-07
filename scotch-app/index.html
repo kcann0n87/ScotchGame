@@ -903,8 +903,8 @@ input[type="number"]::-webkit-outer-spin-button {
   align-items: center;
   gap: var(--space-sm);
 }
-.games-summary .team-a-color { color: var(--team-a); }
-.games-summary .team-b-color { color: var(--team-b); }
+.games-summary .team-a-color { color: var(--team-a-light); }
+.games-summary .team-b-color { color: var(--team-b-light); }
 .games-summary .dash { color: var(--border); font-weight: 400; }
 .games-summary .muted { color: var(--muted); font-size: 13px; font-weight: 500; }
 
@@ -3828,7 +3828,7 @@ function renderScoreRow(player, hIdx, round, team) {
     h('div', null,
       h('div', { class: 'pname' }, player.name),
       h('div', null,
-        h('span', { class: 'pteam' }, `Team ${team}`),
+        h('span', { class: 'pteam' }, `Hcp ${player.handicap || 0}`),
         strokes > 0 ? h('span', { class: 'strokes' }, ` • ${'●'.repeat(strokes)}`) : null
       )
     ),
@@ -4475,10 +4475,11 @@ function countSegmentWins(game) {
 
 function renderTopGameCard(pts, round) {
   const wins = countSegmentWins(pts.top);
+  const tl2 = teamLabels(round);
   const summary = h('div', { class: 'games-summary' },
-    h('span', { class: 'team-a-color' }, `A ${wins.aWins}`),
+    h('span', { class: 'team-a-color' }, `${tl2.a} ${wins.aWins}`),
     h('span', { class: 'dash' }, '·'),
-    h('span', { class: 'team-b-color' }, `B ${wins.bWins}`),
+    h('span', { class: 'team-b-color' }, `${tl2.b} ${wins.bWins}`),
     h('span', { class: 'muted' }, `of ${wins.total} segments`)
   );
   return collapsibleCard('top', 'Top Game — Low/Total', summary, () => {
@@ -4502,10 +4503,11 @@ function renderTopGameCard(pts, round) {
 
 function renderBottomGameCard(pts, round) {
   const wins = countSegmentWins(pts.bottom);
+  const tl3 = teamLabels(round);
   const summary = h('div', { class: 'games-summary' },
-    h('span', { class: 'team-a-color' }, `A ${wins.aWins}`),
+    h('span', { class: 'team-a-color' }, `${tl3.a} ${wins.aWins}`),
     h('span', { class: 'dash' }, '·'),
-    h('span', { class: 'team-b-color' }, `B ${wins.bWins}`),
+    h('span', { class: 'team-b-color' }, `${tl3.b} ${wins.bWins}`),
     h('span', { class: 'muted' }, `of ${wins.total} segments`)
   );
   return collapsibleCard('bottom', 'Bottom Game — Net Nassau', summary, () => {

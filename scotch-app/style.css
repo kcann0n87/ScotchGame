@@ -894,8 +894,8 @@ input[type="number"]::-webkit-outer-spin-button {
   align-items: center;
   gap: var(--space-sm);
 }
-.games-summary .team-a-color { color: var(--team-a); }
-.games-summary .team-b-color { color: var(--team-b); }
+.games-summary .team-a-color { color: var(--team-a-light); }
+.games-summary .team-b-color { color: var(--team-b-light); }
 .games-summary .dash { color: var(--border); font-weight: 400; }
 .games-summary .muted { color: var(--muted); font-size: 13px; font-weight: 500; }
 
