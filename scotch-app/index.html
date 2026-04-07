@@ -4164,29 +4164,40 @@ function renderSummary() {
       }
     }}, '📋 Copy Summary to Text'),
     // Submit for Review
-    !r.cloudSavedId && state.authUser && typeof SupabaseClient !== 'undefined' && SupabaseClient.isConfigured()
-      ? h('button', { class: 'btn gold', style: 'margin-top:10px;', onclick: async () => {
-          try {
-            r.cloudSavedId = 'pending';
-            const row = await SupabaseClient.saveRound(r, { ...settlement, perPlayer: adjustedPerPlayer });
-            if (row) {
-              r.cloudSavedId = row.id;
-              historyCache = null;
-              statsCache = null;
-              save();
-              alert('Round submitted for admin review!');
-              render(true);
-            }
-          } catch (err) {
-            console.warn('Submit failed:', err);
+    (() => {
+      const canSubmit = state.authUser && typeof SupabaseClient !== 'undefined' && SupabaseClient.isConfigured();
+      const alreadySaved = r.cloudSavedId && r.cloudSavedId !== 'pending';
+      if (alreadySaved) {
+        return h('div', { class: 'info', style: 'margin-top:10px;text-align:center;' }, '✓ Submitted — waiting for admin approval');
+      }
+      if (!canSubmit) {
+        return h('div', { style: 'margin-top:10px;font-size:12px;color:var(--muted);text-align:center;' }, 'Sign in to submit this round for review.');
+      }
+      return h('button', { class: 'btn gold', style: 'margin-top:10px;', onclick: async () => {
+        try {
+          r.cloudSavedId = 'pending';
+          render(true);
+          const row = await SupabaseClient.saveRound(r, { ...settlement, perPlayer: adjustedPerPlayer });
+          if (row) {
+            r.cloudSavedId = row.id;
+            historyCache = null;
+            statsCache = null;
+            save();
+            alert('Round submitted for admin review!');
+            render(true);
+          } else {
             r.cloudSavedId = null;
-            alert('Failed to submit: ' + (err.message || err));
+            alert('Submit returned no data. Check console for errors.');
+            render(true);
           }
-        }}, '✓ Submit for Review')
-      : null,
-    r.cloudSavedId && r.cloudSavedId !== 'pending'
-      ? h('div', { class: 'info', style: 'margin-top:10px;text-align:center;' }, '✓ Submitted — waiting for admin approval')
-      : null,
+        } catch (err) {
+          console.error('Submit failed:', err);
+          r.cloudSavedId = null;
+          alert('Failed to submit: ' + (err.message || String(err)));
+          render(true);
+        }
+      }}, r.cloudSavedId === 'pending' ? 'Submitting...' : '✓ Submit for Review');
+    })(),
     h('button', { class: 'btn danger', style: 'margin-top:10px;', onclick: () => {
       if (confirm('End round and clear?')) {
         state.round = null;
