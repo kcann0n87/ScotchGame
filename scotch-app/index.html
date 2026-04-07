@@ -3480,13 +3480,44 @@ function renderRound() {
   function tallyStr(t) { return t.a === t.b ? 'Even' : t.a > t.b ? `${tally.a} +${t.a-t.b}` : `${tally.b} +${t.b-t.a}`; }
   function tallyClr(t) { return t.a > t.b ? 'var(--team-a)' : t.b > t.a ? 'var(--team-b)' : 'rgba(255,255,255,0.7)'; }
 
+  // Build slash-separated press tally for top/bottom games
+  // e.g. "+4/-1" means main up 4, press down 1
+  function pressSlashStr(game, holes) {
+    const segs = [
+      ...game.segments.filter(s => s.name !== 'Overall'),
+      ...game.presses
+    ];
+    const parts = [];
+    for (const seg of segs) {
+      let a = 0, b = 0;
+      for (const p of seg.points) { if (holes.includes(p.h)) { a += p.a; b += p.b; } }
+      const diff = a - b;
+      if (a === 0 && b === 0 && seg.points.filter(p => holes.includes(p.h)).length === 0) continue; // no data for this seg
+      parts.push(diff === 0 ? 'E' : diff > 0 ? `+${diff}` : `${diff}`);
+    }
+    return parts.length === 0 ? 'Even' : parts.join('/');
+  }
+  function pressSlashColor(game, holes) {
+    // Use main front/back segment color
+    const front = game.segments.find(s => s.name === 'Front');
+    const back = game.segments.find(s => s.name === 'Back');
+    let a = 0, b = 0;
+    for (const seg of [front, back]) {
+      if (!seg) continue;
+      for (const p of seg.points) { if (holes.includes(p.h)) { a += p.a; b += p.b; } }
+    }
+    return a > b ? 'var(--team-a)' : b > a ? 'var(--team-b)' : 'var(--muted)';
+  }
+
   // Hole header — shows tally BEFORE this hole (who's up, not raw scores)
   root.appendChild(h('div', { class: 'hole-header' },
     h('div', { class: 'hole-number' }, String(hIdx + 1)),
-    h('div', { style: 'font-size:14px;font-weight:700;color:rgba(255,255,255,0.85);margin-top:6px;display:flex;gap:16px;justify-content:center;' },
-      h('span', null, `Top: ${tallyStr(beforeTop)}`),
+    h('div', { style: 'font-size:13px;font-weight:700;color:rgba(255,255,255,0.85);margin-top:6px;display:flex;gap:14px;justify-content:center;' },
+      h('span', null, 'Top: ', h('span', { style: `color:${pressSlashColor(result.mode === '5man' ? result.game1.top : result.top, holesBefore)};` },
+        pressSlashStr(result.mode === '5man' ? result.game1.top : result.top, holesBefore))),
       h('span', null, `Mid: ${tallyStr(beforeMid)}`),
-      h('span', null, `Bot: ${tallyStr(beforeBot)}`)
+      h('span', null, 'Bot: ', h('span', { style: `color:${pressSlashColor(result.mode === '5man' ? result.game1.bottom : result.bottom, holesBefore)};` },
+        pressSlashStr(result.mode === '5man' ? result.game1.bottom : result.bottom, holesBefore)))
     ),
     h('div', { class: 'hole-info' },
       h('span', null, 'PAR ', h('strong', null, String(hole.par))),
@@ -3746,7 +3777,8 @@ function renderRound() {
   root.appendChild(h('div', { style: 'text-align:center;padding:10px 14px;margin:0 14px;background:var(--card);border-radius:var(--radius);border:1px solid var(--border-light);font-size:14px;font-weight:700;display:flex;justify-content:space-around;' },
     h('div', null,
       h('div', { style: 'font-size:10px;text-transform:uppercase;color:var(--muted);letter-spacing:1px;' }, 'Top'),
-      h('div', { style: `color:${tallyClr(thruTop)};` }, tallyStr(thruTop))
+      h('div', { style: `color:${pressSlashColor(result.mode === '5man' ? result.game1.top : result.top, holesThrough)};` },
+        pressSlashStr(result.mode === '5man' ? result.game1.top : result.top, holesThrough))
     ),
     h('div', null,
       h('div', { style: 'font-size:10px;text-transform:uppercase;color:var(--muted);letter-spacing:1px;' }, 'Middle'),
@@ -3754,7 +3786,8 @@ function renderRound() {
     ),
     h('div', null,
       h('div', { style: 'font-size:10px;text-transform:uppercase;color:var(--muted);letter-spacing:1px;' }, 'Bottom'),
-      h('div', { style: `color:${tallyClr(thruBot)};` }, tallyStr(thruBot))
+      h('div', { style: `color:${pressSlashColor(result.mode === '5man' ? result.game1.bottom : result.bottom, holesThrough)};` },
+        pressSlashStr(result.mode === '5man' ? result.game1.bottom : result.bottom, holesThrough))
     )
   ));
 
