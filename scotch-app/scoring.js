@@ -319,9 +319,7 @@ const Scoring = (() => {
     const backMain  = { startHole: 9, endHole: 17, name: 'Back',  points: [], spawned: false };
     const overall   = { startHole: 0, endHole: 17, name: 'Overall', points: [] };
     const segments = [frontMain, backMain, overall];
-    // Auto back-9 press: the back 9 is automatically worth 2 games
-    const autoBackPress = { startHole: 9, endHole: 17, name: 'Back Press', points: [], spawned: false };
-    const presses = [autoBackPress];
+    const presses = [];
 
     for (let h = 0; h < 18; h++) {
       const low = compareLow(round, h);
@@ -377,7 +375,7 @@ const Scoring = (() => {
   // Front/Back each track their own press chain. Overall (18-hole) does not spawn presses.
   function computeBottomGame(round) {
     const frontMain = { startHole: 0, endHole: 8,  name: 'Front',   points: [], spawned: false };
-    const backMain  = { startHole: 9, endHole: 17, name: 'Back',    points: [], spawned: false };
+    const backMain  = { startHole: 9, endHole: 17, name: 'Back',    points: [], spawned: false, multiplier: 2 }; // back 9 pays double
     const overall   = { startHole: 0, endHole: 17, name: 'Overall', points: [] };
     const segments = [frontMain, backMain, overall];
     const presses = [];
@@ -547,16 +545,18 @@ const Scoring = (() => {
         amountA: amt
       });
     }
-    // Bottom game: $100 flat per segment
+    // Bottom game: $100 flat per segment (back 9 pays 2x)
     for (const seg of [...result.bottom.segments, ...result.bottom.presses]) {
       const t = segTotal(seg);
       const d = t.a - t.b;
       if (d === 0) continue;
-      const amt = d > 0 ? 100 : -100;
+      const mult = seg.multiplier || 1;
+      const base = 100 * mult;
+      const amt = d > 0 ? base : -base;
       total += amt;
       lines.push({
         label: `Bottom ${seg.name} (${d > 0 ? 'A' : 'B'} +${Math.abs(d)})`,
-        calc: `$100 flat`,
+        calc: mult > 1 ? `$100 × ${mult}` : `$100 flat`,
         amountA: amt
       });
     }
