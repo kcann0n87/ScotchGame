@@ -1507,6 +1507,57 @@ function renderSummary() {
   // Golf Fees card — at the TOP so it can't be missed after H18
   root.appendChild(renderGolfFeesCard(r, allPlayers, hostCredit));
 
+  // Running score summary with press slashes (cumulative, all holes)
+  const allHoleIdxs = Array(18).fill(0).map((_, i) => i);
+  const scoredHoles = allHoleIdxs.filter(i => allPlayers.some(p => p.scores[i] != null));
+  function summarySlash(game) {
+    const segs = [...game.segments.filter(s => s.name !== 'Overall'), ...game.presses];
+    const parts = [];
+    for (const seg of segs) {
+      let a = 0, b = 0;
+      for (const p of seg.points) { if (scoredHoles.includes(p.h)) { a += p.a; b += p.b; } }
+      if (seg.points.filter(p => scoredHoles.includes(p.h)).length === 0) continue;
+      const diff = a - b;
+      parts.push(diff === 0 ? 'E' : diff > 0 ? `+${diff}` : `${diff}`);
+    }
+    return parts.length === 0 ? 'Even' : parts.join('/');
+  }
+  function summarySlashClr(game) {
+    const front = game.segments.find(s => s.name === 'Front');
+    const back = game.segments.find(s => s.name === 'Back');
+    let a = 0, b = 0;
+    for (const seg of [front, back]) { if (!seg) continue; for (const p of seg.points) { if (scoredHoles.includes(p.h)) { a += p.a; b += p.b; } } }
+    return a > b ? 'var(--team-a-light)' : b > a ? 'var(--team-b-light)' : 'var(--muted)';
+  }
+  function summaryMid(pts) {
+    let a = 0, b = 0;
+    for (const hi of scoredHoles) { const p = pts.points[hi]; if (p) { a += p.a; b += p.b; } }
+    return { a, b };
+  }
+  const stl2 = teamLabels(r);
+  const topG = result.mode === '5man' ? result.game1.top : result.top;
+  const botG = result.mode === '5man' ? result.game1.bottom : result.bottom;
+  const midT = result.mode === '5man'
+    ? { a: summaryMid(result.game1).a + summaryMid(result.game2).a, b: summaryMid(result.game1).b + summaryMid(result.game2).b }
+    : summaryMid(result);
+  const midStr2 = midT.a === midT.b ? 'Even' : midT.a > midT.b ? `${stl2.a} +${midT.a-midT.b}` : `${stl2.b} +${midT.b-midT.a}`;
+  const midClr2 = midT.a > midT.b ? 'var(--team-a-light)' : midT.b > midT.a ? 'var(--team-b-light)' : 'var(--muted)';
+
+  root.appendChild(h('div', { style: 'display:flex;justify-content:space-around;padding:14px;margin:14px;background:var(--card);border-radius:var(--radius-lg);border:1px solid var(--border-light);box-shadow:var(--shadow);font-weight:700;' },
+    h('div', { style: 'text-align:center;' },
+      h('div', { style: 'font-size:10px;text-transform:uppercase;color:var(--muted);letter-spacing:1px;margin-bottom:4px;' }, 'Top'),
+      h('div', { style: `font-size:16px;color:${summarySlashClr(topG)};` }, summarySlash(topG))
+    ),
+    h('div', { style: 'text-align:center;' },
+      h('div', { style: 'font-size:10px;text-transform:uppercase;color:var(--muted);letter-spacing:1px;margin-bottom:4px;' }, 'Middle'),
+      h('div', { style: `font-size:16px;color:${midClr2};` }, midStr2)
+    ),
+    h('div', { style: 'text-align:center;' },
+      h('div', { style: 'font-size:10px;text-transform:uppercase;color:var(--muted);letter-spacing:1px;margin-bottom:4px;' }, 'Bottom'),
+      h('div', { style: `font-size:16px;color:${summarySlashClr(botG)};` }, summarySlash(botG))
+    )
+  ));
+
   // Render points / top / bottom — differs by mode
   const gameViews = result.mode === '5man'
     ? [{ label: 'Game 1', pts: result.game1, subRound: result.sub1 },
@@ -1626,15 +1677,18 @@ function renderSummary() {
     ));
   }
 
-  // Team totals banner (using adjusted numbers that include golf fees)
-  const stl = teamLabels(r);
-  const teamA$ = r.teamA.reduce((s, p) => s + (adjustedPerPlayer[p.id] || 0), 0);
+  // Per-player totals banner
   root.appendChild(h('div', { class: 'card', style: 'background:var(--green);color:white;' },
-    h('h2', { style: 'color:white;' }, 'Team Totals'),
-    h('div', { style: 'text-align:center;padding:12px 0;' },
-      h('div', { style: 'font-size:36px;font-weight:800;' },
-        teamA$ === 0 ? 'Even' : (teamA$ > 0 ? `${stl.a} +$${teamA$}` : `${stl.b} +$${Math.abs(teamA$)}`)
-      )
+    h('h2', { style: 'color:white;' }, 'Final'),
+    h('div', { style: 'display:flex;flex-wrap:wrap;justify-content:space-around;padding:8px 0;gap:12px;' },
+      ...allPlayers.map(p => {
+        const amt = adjustedPerPlayer[p.id] || 0;
+        return h('div', { style: 'text-align:center;min-width:80px;' },
+          h('div', { style: 'font-size:12px;opacity:0.8;' }, p.name.split(' ')[0]),
+          h('div', { style: 'font-size:24px;font-weight:900;' },
+            amt === 0 ? '$0' : amt > 0 ? `+$${amt}` : `-$${Math.abs(amt)}`)
+        );
+      })
     )
   ));
 
