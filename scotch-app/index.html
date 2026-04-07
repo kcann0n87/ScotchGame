@@ -3435,18 +3435,14 @@ function renderRound() {
     for (const hi of holes) { const p = pts.points[hi]; if (p) { a += p.a; b += p.b; } }
     return { a, b };
   }
-  function sumTopHoles(topGame, holes) {
+  // For top/bottom tally, only use the Front and Back main segments (not presses/overall)
+  // to avoid double-counting holes that appear in multiple overlapping segments.
+  function sumGameHoles(game, holes) {
     let a = 0, b = 0;
-    const allSegs = [...topGame.segments, ...topGame.presses];
-    for (const seg of allSegs) {
-      for (const p of seg.points) { if (holes.includes(p.h)) { a += p.a; b += p.b; } }
-    }
-    return { a, b };
-  }
-  function sumBottomHoles(bottomGame, holes) {
-    let a = 0, b = 0;
-    const allSegs = [...bottomGame.segments, ...bottomGame.presses];
-    for (const seg of allSegs) {
+    const front = game.segments.find(s => s.name === 'Front');
+    const back = game.segments.find(s => s.name === 'Back');
+    for (const seg of [front, back]) {
+      if (!seg) continue;
       for (const p of seg.points) { if (holes.includes(p.h)) { a += p.a; b += p.b; } }
     }
     return { a, b };
@@ -3458,13 +3454,13 @@ function renderRound() {
         b: sumHoles(result.game1, holesBefore).b + sumHoles(result.game2, holesBefore).b }
     : sumHoles(result, holesBefore);
   const beforeTop = result.mode === '5man'
-    ? { a: sumTopHoles(result.game1.top, holesBefore).a + sumTopHoles(result.game2.top, holesBefore).a,
-        b: sumTopHoles(result.game1.top, holesBefore).b + sumTopHoles(result.game2.top, holesBefore).b }
-    : sumTopHoles(result.top, holesBefore);
+    ? { a: sumGameHoles(result.game1.top, holesBefore).a + sumGameHoles(result.game2.top, holesBefore).a,
+        b: sumGameHoles(result.game1.top, holesBefore).b + sumGameHoles(result.game2.top, holesBefore).b }
+    : sumGameHoles(result.top, holesBefore);
   const beforeBot = result.mode === '5man'
-    ? { a: sumBottomHoles(result.game1.bottom, holesBefore).a + sumBottomHoles(result.game2.bottom, holesBefore).a,
-        b: sumBottomHoles(result.game1.bottom, holesBefore).b + sumBottomHoles(result.game2.bottom, holesBefore).b }
-    : sumBottomHoles(result.bottom, holesBefore);
+    ? { a: sumGameHoles(result.game1.bottom, holesBefore).a + sumGameHoles(result.game2.bottom, holesBefore).a,
+        b: sumGameHoles(result.game1.bottom, holesBefore).b + sumGameHoles(result.game2.bottom, holesBefore).b }
+    : sumGameHoles(result.bottom, holesBefore);
 
   // Through current hole (bottom tally)
   const thruMid = result.mode === '5man'
@@ -3472,13 +3468,13 @@ function renderRound() {
         b: sumHoles(result.game1, holesThrough).b + sumHoles(result.game2, holesThrough).b }
     : sumHoles(result, holesThrough);
   const thruTop = result.mode === '5man'
-    ? { a: sumTopHoles(result.game1.top, holesThrough).a + sumTopHoles(result.game2.top, holesThrough).a,
-        b: sumTopHoles(result.game1.top, holesThrough).b + sumTopHoles(result.game2.top, holesThrough).b }
-    : sumTopHoles(result.top, holesThrough);
+    ? { a: sumGameHoles(result.game1.top, holesThrough).a + sumGameHoles(result.game2.top, holesThrough).a,
+        b: sumGameHoles(result.game1.top, holesThrough).b + sumGameHoles(result.game2.top, holesThrough).b }
+    : sumGameHoles(result.top, holesThrough);
   const thruBot = result.mode === '5man'
-    ? { a: sumBottomHoles(result.game1.bottom, holesThrough).a + sumBottomHoles(result.game2.bottom, holesThrough).a,
-        b: sumBottomHoles(result.game1.bottom, holesThrough).b + sumBottomHoles(result.game2.bottom, holesThrough).b }
-    : sumBottomHoles(result.bottom, holesThrough);
+    ? { a: sumGameHoles(result.game1.bottom, holesThrough).a + sumGameHoles(result.game2.bottom, holesThrough).a,
+        b: sumGameHoles(result.game1.bottom, holesThrough).b + sumGameHoles(result.game2.bottom, holesThrough).b }
+    : sumGameHoles(result.bottom, holesThrough);
 
   const tally = teamLabels(r);
   function tallyStr(t) { return t.a === t.b ? 'Even' : t.a > t.b ? `${tally.a} +${t.a-t.b}` : `${tally.b} +${t.b-t.a}`; }
