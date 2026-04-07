@@ -867,13 +867,14 @@ async function saveEnteredRound() {
     }
   };
 
-  // Save round
+  // Save round — admin rounds are auto-approved
   const { data: roundRow, error } = await db.from('rounds').insert({
     scorer_id: user.id,
     course_name: courseName,
     played_at: re.date + 'T12:00:00Z',
     mode: 'manual',
     game_type: 'manual',
+    status: 'approved',
     data: roundData,
     settlement: { perPlayer: {} }
   }).select().single();
@@ -1066,6 +1067,7 @@ async function saveManualRound() {
     played_at: date + 'T12:00:00Z',
     mode: 'manual',
     game_type: 'manual',
+    status: 'approved',
     data: roundData,
     settlement: { perPlayer: {} }
   }).select().single();
@@ -1261,7 +1263,9 @@ function renderLedger(app) {
 
   app.appendChild(h('div', { class: 'card', style: 'margin-top:16px;' },
     h('h2', null, 'Player Balances'),
-    h('button', { class: 'btn', style: 'margin-bottom:16px;', onclick: () => { paymentModal = true; render(); } }, '+ Record Payment'),
+    h('div', { style: 'display:flex;gap:8px;margin-bottom:16px;' },
+      h('button', { class: 'btn', onclick: () => { paymentModal = true; render(); } }, '+ Payment / Adjustment')
+    ),
     h('table', null,
       h('thead', null, h('tr', null,
         h('th', null, 'Player'),
@@ -1279,7 +1283,7 @@ function renderLedger(app) {
             e.stopPropagation();
             paymentModal = p.id;
             render();
-          } }, 'Pay'))
+          } }, 'Adjust'))
         ))
       )
     )
@@ -1326,7 +1330,7 @@ function renderPaymentModal() {
 
   const modal = h('div', { class: 'modal-bg', onclick: e => { if (e.target === e.currentTarget) close(); } },
     h('div', { class: 'modal' },
-      h('h3', null, 'Record Payment'),
+      h('h3', null, 'Ledger Adjustment'),
       h('div', { class: 'field' },
         h('label', null, 'Player'),
         h('select', { onchange: e => { userId = e.target.value; } },
@@ -1337,12 +1341,13 @@ function renderPaymentModal() {
         )
       ),
       h('div', { class: 'field' },
-        h('label', null, 'Amount (positive = received, negative = paid out)'),
-        h('input', { type: 'number', placeholder: '-200', oninput: e => { amount = e.target.value; } })
+        h('label', null, 'Amount'),
+        h('input', { type: 'number', placeholder: '200 or -200', oninput: e => { amount = e.target.value; } }),
+        h('div', { style: 'font-size:11px;color:var(--muted);margin-top:4px;' }, 'Positive = credit (player receives). Negative = debit (player pays).')
       ),
       h('div', { class: 'field' },
         h('label', null, 'Note'),
-        h('input', { type: 'text', placeholder: 'Venmo from Mike', oninput: e => { note = e.target.value; } })
+        h('input', { type: 'text', placeholder: 'e.g. Opening balance, Venmo, Correction', oninput: e => { note = e.target.value; } })
       ),
       h('div', { style: 'display:flex;gap:10px;margin-top:16px;' },
         h('button', { class: 'btn', onclick: () => {
