@@ -902,10 +902,10 @@ function renderNewRound() {
             h('div', { class: 'field', style: 'flex:0 0 70px;' },
               h('label', null, 'Handicap'),
               h('input', { type: 'number', value: p.handicap === '' || p.handicap == null ? '' : p.handicap,
-                min: 0, max: 54, placeholder: '0',
+                min: -10, max: 54, placeholder: '0',
                 oninput: e => {
                   const v = e.target.value;
-                  p.handicap = v === '' ? '' : (parseInt(v) || 0);
+                  p.handicap = v === '' ? '' : (v === '-' ? v : (parseInt(v, 10) ?? 0));
                 } })
             ),
             h('div', { class: 'field', style: 'flex:1;min-width:0;' },
