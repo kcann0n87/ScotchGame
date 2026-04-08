@@ -755,7 +755,14 @@ function renderNewRound() {
           h('button', { class: 'btn secondary', onclick: () => { state.screen = 'courses'; render(); } }, 'Manage Courses')
         )
       : h('select', {
-          onchange: e => { newRoundDraft.courseId = e.target.value; }
+          onchange: e => {
+            newRoundDraft.courseId = e.target.value;
+            // Reset all player tee selections for the new course
+            const newCourse = state.courses.find(c => c.id === e.target.value);
+            const firstTee = (newCourse && newCourse.tees && newCourse.tees.length > 0) ? newCourse.tees[0].name : '';
+            for (const p of newRoundDraft.players) p.tees = firstTee;
+            render();
+          }
         },
           ...state.courses.map(c =>
             h('option', { value: c.id, ...(c.id === newRoundDraft.courseId ? { selected: 'selected' } : {}) }, c.name)
