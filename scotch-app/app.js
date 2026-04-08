@@ -276,6 +276,14 @@ function teamLabels(round) {
     b: teamLabel(round.teamB)
   };
 }
+// Full first names version for headers/banners
+function teamLabelFull(players) {
+  if (!players || players.length === 0) return '?';
+  return players.map(p => (p.name || '?').split(' ')[0]).join('/');
+}
+function teamLabelsFull(round) {
+  return { a: teamLabelFull(round.teamA), b: teamLabelFull(round.teamB) };
+}
 
 // ---------- Rendering ----------
 const root = document.getElementById('app');
@@ -2784,9 +2792,10 @@ function renderLiveView() {
     ? { a: sumMidPlayed(result.game1).a + sumMidPlayed(result.game2).a,
         b: sumMidPlayed(result.game1).b + sumMidPlayed(result.game2).b }
     : sumMidPlayed(result);
+  const tlFull = teamLabelsFull(liveRound);
   const midStr = midTally.a === midTally.b ? 'Even'
-    : midTally.a > midTally.b ? `${tl.a} +${midTally.a - midTally.b}`
-    : `${tl.b} +${midTally.b - midTally.a}`;
+    : midTally.a > midTally.b ? `${tlFull.a} +${midTally.a - midTally.b}`
+    : `${tlFull.b} +${midTally.b - midTally.a}`;
   const midClr = midTally.a > midTally.b ? 'var(--team-a)' : midTally.b > midTally.a ? 'var(--team-b)' : 'var(--muted)';
 
   // Top/Bottom press slash tally
