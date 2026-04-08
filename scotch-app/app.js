@@ -1815,6 +1815,11 @@ function renderSummary() {
             historyCache = null;
             statsCache = null;
             save();
+            // Send email summary to all logged-in players (fire and forget)
+            try {
+              const summaryText = buildCopyText(r, result, settlement, adjustedPerPlayer);
+              SupabaseClient.sendRoundEmail(row.id, summaryText, r.course?.name, r.date);
+            } catch (e) { console.warn('Email send failed:', e); }
             alert('Round submitted for admin review!');
             render(true);
           } else {

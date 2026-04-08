@@ -450,6 +450,21 @@ const SupabaseClient = (() => {
     return () => _client.removeChannel(channel);
   }
 
+  // ---------- Email round summary ----------
+  async function sendRoundEmail(roundId, summaryText, courseName, date) {
+    if (!_client) return null;
+    try {
+      const { data, error } = await _client.functions.invoke('send-round-email', {
+        body: { round_id: roundId, summary_text: summaryText, course_name: courseName, date }
+      });
+      if (error) console.warn('sendRoundEmail error:', error);
+      return data;
+    } catch (e) {
+      console.warn('sendRoundEmail failed:', e);
+      return null;
+    }
+  }
+
   // ---------- Courses ----------
   async function loadCourses() {
     if (!_client) return [];
@@ -473,6 +488,7 @@ const SupabaseClient = (() => {
     resetPassword,
     updatePassword,
     isPasswordRecovery,
+    sendRoundEmail,
     signOut,
     updateProfile,
     // social
