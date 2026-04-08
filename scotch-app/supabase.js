@@ -450,6 +450,21 @@ const SupabaseClient = (() => {
     return () => _client.removeChannel(channel);
   }
 
+  // ---------- Live Chat (Broadcast) ----------
+  function subscribeLiveChat(code, onMessage) {
+    if (!_client) return null;
+    const channel = _client.channel(`chat-${code}`);
+    channel.on('broadcast', { event: 'chat' }, (payload) => {
+      onMessage(payload.payload);
+    }).subscribe();
+    return {
+      send: (msg) => {
+        channel.send({ type: 'broadcast', event: 'chat', payload: msg });
+      },
+      unsubscribe: () => _client.removeChannel(channel)
+    };
+  }
+
   // ---------- Email round summary ----------
   async function sendRoundEmail(roundId, summaryText, courseName, date) {
     if (!_client) return null;
@@ -505,6 +520,7 @@ const SupabaseClient = (() => {
     // live share
     createLiveShare,
     updateLiveShare,
-    subscribeToLiveShare
+    subscribeToLiveShare,
+    subscribeLiveChat
   };
 })();
