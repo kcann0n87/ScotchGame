@@ -374,6 +374,22 @@ async function loadAllData() {
     if (idx >= 0) COURSES[idx] = entry;
     else COURSES.push(entry);
   }
+  // Auto-sync any preset courses that aren't in the DB yet
+  const dbNames = new Set(allCourses.map(c => c.name));
+  for (const c of COURSES) {
+    if (!dbNames.has(c.name) && c.pars && c.pars.length > 0) {
+      db.from('courses').insert({
+        name: c.name,
+        pars: c.pars,
+        si: c.si,
+        tees: c.tees || [],
+        created_by: user.id
+      }).then(({ data, error }) => {
+        if (!error) console.log('Auto-synced course to DB:', c.name);
+        else console.warn('Failed to sync course:', c.name, error);
+      });
+    }
+  }
   render();
 }
 
