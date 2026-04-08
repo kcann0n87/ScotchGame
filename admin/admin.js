@@ -54,6 +54,12 @@ const COURSES = [
     si:   [3,7,15,1,11,13,17,9,5, 12,8,4,16,10,2,18,14,6],
     tees: [
       { name: 'Blue', rating: 71.0 }, { name: 'White', rating: 69.6 }, { name: 'Gold', rating: 66.1 }
+    ]},
+  { name: 'The Wanderers Club',
+    pars: [4,5,3,4,3,4,5,4,4, 4,3,5,4,4,3,4,5,4],
+    si:   [7,3,11,5,13,1,9,17,15, 10,12,6,8,16,2,14,4,18],
+    tees: [
+      { name: 'Black', rating: 74.0 }, { name: 'Blue', rating: 72.0 }, { name: 'Green', rating: 69.8 }, { name: 'Gold', rating: 66.5 }
     ]}
 ];
 
