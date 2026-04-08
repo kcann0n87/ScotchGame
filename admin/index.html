@@ -914,6 +914,63 @@ function renderPlayers(app) {
       )
     )
   ));
+
+  // Unlinked players — round_players rows with no user_id
+  const unlinked = allRoundPlayers.filter(rp => !rp.user_id && rp.display_name);
+  // Group by name to avoid duplicates
+  const unlinkedByName = {};
+  for (const rp of unlinked) {
+    const key = rp.display_name.toLowerCase().trim();
+    if (!unlinkedByName[key]) unlinkedByName[key] = { name: rp.display_name, rows: [] };
+    unlinkedByName[key].rows.push(rp);
+  }
+  const unlinkedNames = Object.values(unlinkedByName);
+
+  if (unlinkedNames.length > 0) {
+    app.appendChild(h('div', { class: 'card' },
+      h('h2', null, `Unlinked Players (${unlinkedNames.length})`),
+      h('div', { style: 'font-size:12px;color:var(--muted);margin-bottom:12px;' },
+        'These names appeared in rounds but are not linked to any account. Assign them to a profile so their rounds count toward handicaps and the ledger.'),
+      h('table', null,
+        h('thead', null, h('tr', null,
+          h('th', { style: 'text-align:left;' }, 'Name'),
+          h('th', null, 'Rounds'),
+          h('th', null, 'Link to Profile'),
+          h('th', null, '')
+        )),
+        h('tbody', null,
+          ...unlinkedNames.map(un => {
+            return h('tr', null,
+              h('td', { style: 'font-weight:600;' }, un.name),
+              h('td', null, String(un.rows.length)),
+              h('td', null,
+                h('select', { id: `link-${un.name}`, style: 'width:100%;' },
+                  h('option', { value: '' }, '— Select Profile —'),
+                  ...allProfiles.map(p => h('option', { value: p.id }, `${p.display_name} (${p.email || 'no email'})`))
+                )
+              ),
+              h('td', null,
+                h('button', { class: 'btn sm', onclick: async () => {
+                  const sel = document.getElementById(`link-${un.name}`);
+                  const profileId = sel?.value;
+                  if (!profileId) { alert('Select a profile first'); return; }
+                  // Update all round_players rows with this name to point to the selected profile
+                  let updated = 0;
+                  for (const rp of un.rows) {
+                    await db.from('round_players').update({ user_id: profileId }).eq('id', rp.id);
+                    updated++;
+                  }
+                  alert(`Linked ${updated} round(s) for "${un.name}" to the selected profile.`);
+                  allRoundPlayers = null;
+                  await loadAllData();
+                } }, 'Link')
+              )
+            );
+          })
+        )
+      )
+    ));
+  }
 }
 
 // ==================== ENTER ROUND TAB ====================

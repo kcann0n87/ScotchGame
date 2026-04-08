@@ -315,14 +315,32 @@ const SupabaseClient = (() => {
 
   async function getMyStats() {
     if (!_client || !_user) return null;
-    const [{ data: playerRows }, { data: paymentRows }] = await Promise.all([
-      _client.from('round_players')
-        .select('round_id, final_amount, rounds(mode, game_type, course_name, status)')
-        .eq('user_id', _user.id),
-      _client.from('payments')
-        .select('amount')
-        .eq('user_id', _user.id)
-    ]);
+    let playerRows = [], paymentRows = [];
+    try {
+      const [pr, pay] = await Promise.all([
+        _client.from('round_players')
+          .select('round_id, final_amount, rounds(mode, game_type, course_name, status)')
+          .eq('user_id', _user.id),
+        _client.from('payments')
+          .select('amount')
+          .eq('user_id', _user.id)
+      ]);
+      playerRows = pr.data || [];
+      paymentRows = pay.data || [];
+      // If the FK join failed, fall back to separate queries
+      if (pr.error && String(pr.error.message).includes('relationship')) {
+        const { data: prs } = await _client.from('round_players').select('round_id, final_amount').eq('user_id', _user.id);
+        const roundIds = (prs || []).map(r => r.round_id);
+        if (roundIds.length > 0) {
+          const { data: rounds } = await _client.from('rounds').select('id, mode, game_type, course_name, status').in('id', roundIds);
+          const roundMap = {};
+          for (const r of (rounds || [])) roundMap[r.id] = r;
+          playerRows = (prs || []).map(r => ({ ...r, rounds: roundMap[r.round_id] || null }));
+        }
+      }
+    } catch (e) {
+      console.error('getMyStats query error:', e);
+    }
     // Only count approved rounds (skip pending/rejected)
     const rows = (playerRows || []).filter(r => {
       const status = r.rounds?.status;

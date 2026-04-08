@@ -902,6 +902,8 @@ function renderNewRound() {
               h('label', null, 'Stake'),
               h('select', { style: 'width:100%;', onchange: e => { p.stake = e.target.value; } },
                 h('option', { value: 'full', ...(p.stake === 'full' ? { selected: 'selected' } : {}) }, 'Full ($100)'),
+                h('option', { value: '1.25x', ...(p.stake === '1.25x' ? { selected: 'selected' } : {}) }, '1.25× ($125)'),
+                h('option', { value: '0.75x', ...(p.stake === '0.75x' ? { selected: 'selected' } : {}) }, '¾ ($75)'),
                 h('option', { value: 'half', ...(p.stake === 'half' ? { selected: 'selected' } : {}) }, 'Half ($50)')
               )
             )
@@ -1657,7 +1659,8 @@ function renderSummary() {
       const sign = amt > 0 ? '+' : amt < 0 ? '−' : '';
       const badges = [];
       if (p.swing) badges.push('SWING');
-      badges.push(p.stake === 'full' ? 'Full' : 'Half');
+      const stakeLabels = { 'full': 'Full', 'half': 'Half', '1.25x': '1.25×', '0.75x': '¾' };
+      badges.push(stakeLabels[p.stake] || 'Full');
       const isOpen = state.expandedPlayer === p.id;
       return h('div', null,
         h('div', {
@@ -2596,7 +2599,12 @@ function renderAccount() {
 let historyCache = null;
 async function loadHistory() {
   if (!SupabaseClient || !SupabaseClient.isConfigured() || !state.authUser) return [];
-  historyCache = await SupabaseClient.listMyRounds();
+  try {
+    historyCache = await SupabaseClient.listMyRounds();
+  } catch (e) {
+    console.error('loadHistory error:', e);
+    historyCache = [];
+  }
   render();
 }
 function renderHistory() {
@@ -2649,8 +2657,14 @@ let statsCache = null;
 let h2hCache = null;
 async function loadStats() {
   if (!SupabaseClient || !SupabaseClient.isConfigured() || !state.authUser) return;
-  statsCache = await SupabaseClient.getMyStats();
-  h2hCache = await SupabaseClient.getHeadToHead();
+  try {
+    statsCache = await SupabaseClient.getMyStats();
+    h2hCache = await SupabaseClient.getHeadToHead();
+  } catch (e) {
+    console.error('loadStats error:', e);
+    statsCache = statsCache || { roundsPlayed: 0, totalWon: 0, totalLost: 0, netTotal: 0, wins: 0, losses: 0, ties: 0, byCourse: {}, paymentsTotal: 0 };
+    h2hCache = h2hCache || [];
+  }
   render();
 }
 function renderStats() {
@@ -3204,6 +3218,10 @@ async function init() {
           for (const dc of dbCourses) {
             const existing = state.courses.find(c => c.name === dc.name);
             if (existing) {
+              // Update pars and SI from DB
+              if (dc.pars && dc.pars.length > 0) {
+                existing.holes = dc.pars.map((par, i) => ({ par, si: dc.si ? dc.si[i] : (existing.holes[i]?.si || (i + 1)) }));
+              }
               // Update tees from DB if they have ratings
               if (dc.tees && dc.tees.length > 0) {
                 existing.tees = dc.tees.map(t => typeof t === 'string' ? { name: t, si: null, rating: null } : { name: t.name, si: t.si || null, rating: t.rating || null });

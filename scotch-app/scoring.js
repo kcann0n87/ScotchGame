@@ -507,9 +507,17 @@ const Scoring = (() => {
   //   Bottom game: $100 flat per segment won (no per-point)
   //
   // Individual Nassau: per-pair at lower stake, $100 per segment (full) or $50 (half).
-  function stakeFactor(p) { return p.stake === 'half' ? 0.5 : 1; }
+  function stakeFactor(p) {
+    if (p.stake === 'half') return 0.5;
+    if (p.stake === '1.25x') return 1.25;
+    if (p.stake === '0.75x') return 0.75;
+    return 1; // full
+  }
   function stakeFor(p) {
-    return p.stake === 'half' ? { game: 50, perPoint: 10 } : { game: 100, perPoint: 20 };
+    if (p.stake === 'half') return { game: 50, perPoint: 10 };
+    if (p.stake === '1.25x') return { game: 125, perPoint: 25 };
+    if (p.stake === '0.75x') return { game: 75, perPoint: 15 };
+    return { game: 100, perPoint: 20 }; // full
   }
   function lowerStake(a, b) {
     const sa = stakeFor(a), sb = stakeFor(b);
@@ -630,7 +638,7 @@ const Scoring = (() => {
         details.push({
           aId: pa.id, aName: pa.name,
           bId: pb.id, bName: pb.name,
-          stake: stake.game === 100 ? 'full' : 'half',
+          stake: stake.game === 125 ? '1.25×' : stake.game === 100 ? 'full' : stake.game === 75 ? '¾' : 'half',
           perSeg: stake.game,
           frontDiff: match.frontDiff,
           backDiff:  match.backDiff,
@@ -687,8 +695,8 @@ const Scoring = (() => {
     const bigTeam  = round.teamA.length === 3 ? round.teamA : round.teamB;
     const smallTeam = round.teamA.length === 3 ? round.teamB : round.teamA;
 
-    // Apply action split on the big team: full=2 shares, half=1 share, normalize.
-    const shares = bigTeam.map(p => p.stake === 'full' ? 2 : 1);
+    // Apply action split on the big team based on stake factor.
+    const shares = bigTeam.map(p => stakeFactor(p) * 2);
     const totalShares = shares.reduce((a, b) => a + b, 0);
     const pool = bigTeam.reduce((s, p) => s + perPlayer[p.id], 0);
 
@@ -705,8 +713,8 @@ const Scoring = (() => {
     const newSum = bigTeam.reduce((s, p) => s + perPlayer[p.id], 0);
     const diff = pool - newSum;
     if (diff !== 0 && bigTeam.length > 0) {
-      // Apply correction to the first full-share player (largest share)
-      const fullPlayer = bigTeam.find(p => p.stake === 'full') || bigTeam[0];
+      // Apply correction to the highest-stake player (largest share)
+      const fullPlayer = bigTeam.reduce((best, p) => stakeFactor(p) > stakeFactor(best) ? p : best, bigTeam[0]);
       perPlayer[fullPlayer.id] += diff;
     }
 

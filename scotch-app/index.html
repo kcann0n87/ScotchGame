@@ -1674,9 +1674,17 @@ const Scoring = (() => {
   //   Bottom game: $100 flat per segment won (no per-point)
   //
   // Individual Nassau: per-pair at lower stake, $100 per segment (full) or $50 (half).
-  function stakeFactor(p) { return p.stake === 'half' ? 0.5 : 1; }
+  function stakeFactor(p) {
+    if (p.stake === 'half') return 0.5;
+    if (p.stake === '1.25x') return 1.25;
+    if (p.stake === '0.75x') return 0.75;
+    return 1; // full
+  }
   function stakeFor(p) {
-    return p.stake === 'half' ? { game: 50, perPoint: 10 } : { game: 100, perPoint: 20 };
+    if (p.stake === 'half') return { game: 50, perPoint: 10 };
+    if (p.stake === '1.25x') return { game: 125, perPoint: 25 };
+    if (p.stake === '0.75x') return { game: 75, perPoint: 15 };
+    return { game: 100, perPoint: 20 }; // full
   }
   function lowerStake(a, b) {
     const sa = stakeFor(a), sb = stakeFor(b);
@@ -1797,7 +1805,7 @@ const Scoring = (() => {
         details.push({
           aId: pa.id, aName: pa.name,
           bId: pb.id, bName: pb.name,
-          stake: stake.game === 100 ? 'full' : 'half',
+          stake: stake.game === 125 ? '1.25×' : stake.game === 100 ? 'full' : stake.game === 75 ? '¾' : 'half',
           perSeg: stake.game,
           frontDiff: match.frontDiff,
           backDiff:  match.backDiff,
@@ -1854,8 +1862,8 @@ const Scoring = (() => {
     const bigTeam  = round.teamA.length === 3 ? round.teamA : round.teamB;
     const smallTeam = round.teamA.length === 3 ? round.teamB : round.teamA;
 
-    // Apply action split on the big team: full=2 shares, half=1 share, normalize.
-    const shares = bigTeam.map(p => p.stake === 'full' ? 2 : 1);
+    // Apply action split on the big team based on stake factor.
+    const shares = bigTeam.map(p => stakeFactor(p) * 2);
     const totalShares = shares.reduce((a, b) => a + b, 0);
     const pool = bigTeam.reduce((s, p) => s + perPlayer[p.id], 0);
 
@@ -1872,8 +1880,8 @@ const Scoring = (() => {
     const newSum = bigTeam.reduce((s, p) => s + perPlayer[p.id], 0);
     const diff = pool - newSum;
     if (diff !== 0 && bigTeam.length > 0) {
-      // Apply correction to the first full-share player (largest share)
-      const fullPlayer = bigTeam.find(p => p.stake === 'full') || bigTeam[0];
+      // Apply correction to the highest-stake player (largest share)
+      const fullPlayer = bigTeam.reduce((best, p) => stakeFactor(p) > stakeFactor(best) ? p : best, bigTeam[0]);
       perPlayer[fullPlayer.id] += diff;
     }
 
@@ -2247,14 +2255,32 @@ const SupabaseClient = (() => {
 
   async function getMyStats() {
     if (!_client || !_user) return null;
-    const [{ data: playerRows }, { data: paymentRows }] = await Promise.all([
-      _client.from('round_players')
-        .select('round_id, final_amount, rounds(mode, game_type, course_name, status)')
-        .eq('user_id', _user.id),
-      _client.from('payments')
-        .select('amount')
-        .eq('user_id', _user.id)
-    ]);
+    let playerRows = [], paymentRows = [];
+    try {
+      const [pr, pay] = await Promise.all([
+        _client.from('round_players')
+          .select('round_id, final_amount, rounds(mode, game_type, course_name, status)')
+          .eq('user_id', _user.id),
+        _client.from('payments')
+          .select('amount')
+          .eq('user_id', _user.id)
+      ]);
+      playerRows = pr.data || [];
+      paymentRows = pay.data || [];
+      // If the FK join failed, fall back to separate queries
+      if (pr.error && String(pr.error.message).includes('relationship')) {
+        const { data: prs } = await _client.from('round_players').select('round_id, final_amount').eq('user_id', _user.id);
+        const roundIds = (prs || []).map(r => r.round_id);
+        if (roundIds.length > 0) {
+          const { data: rounds } = await _client.from('rounds').select('id, mode, game_type, course_name, status').in('id', roundIds);
+          const roundMap = {};
+          for (const r of (rounds || [])) roundMap[r.id] = r;
+          playerRows = (prs || []).map(r => ({ ...r, rounds: roundMap[r.round_id] || null }));
+        }
+      }
+    } catch (e) {
+      console.error('getMyStats query error:', e);
+    }
     // Only count approved rounds (skip pending/rejected)
     const rows = (playerRows || []).filter(r => {
       const status = r.rounds?.status;
@@ -3293,6 +3319,8 @@ function renderNewRound() {
               h('label', null, 'Stake'),
               h('select', { style: 'width:100%;', onchange: e => { p.stake = e.target.value; } },
                 h('option', { value: 'full', ...(p.stake === 'full' ? { selected: 'selected' } : {}) }, 'Full ($100)'),
+                h('option', { value: '1.25x', ...(p.stake === '1.25x' ? { selected: 'selected' } : {}) }, '1.25× ($125)'),
+                h('option', { value: '0.75x', ...(p.stake === '0.75x' ? { selected: 'selected' } : {}) }, '¾ ($75)'),
                 h('option', { value: 'half', ...(p.stake === 'half' ? { selected: 'selected' } : {}) }, 'Half ($50)')
               )
             )
@@ -4048,7 +4076,8 @@ function renderSummary() {
       const sign = amt > 0 ? '+' : amt < 0 ? '−' : '';
       const badges = [];
       if (p.swing) badges.push('SWING');
-      badges.push(p.stake === 'full' ? 'Full' : 'Half');
+      const stakeLabels = { 'full': 'Full', 'half': 'Half', '1.25x': '1.25×', '0.75x': '¾' };
+      badges.push(stakeLabels[p.stake] || 'Full');
       const isOpen = state.expandedPlayer === p.id;
       return h('div', null,
         h('div', {
@@ -4987,7 +5016,12 @@ function renderAccount() {
 let historyCache = null;
 async function loadHistory() {
   if (!SupabaseClient || !SupabaseClient.isConfigured() || !state.authUser) return [];
-  historyCache = await SupabaseClient.listMyRounds();
+  try {
+    historyCache = await SupabaseClient.listMyRounds();
+  } catch (e) {
+    console.error('loadHistory error:', e);
+    historyCache = [];
+  }
   render();
 }
 function renderHistory() {
@@ -5040,8 +5074,14 @@ let statsCache = null;
 let h2hCache = null;
 async function loadStats() {
   if (!SupabaseClient || !SupabaseClient.isConfigured() || !state.authUser) return;
-  statsCache = await SupabaseClient.getMyStats();
-  h2hCache = await SupabaseClient.getHeadToHead();
+  try {
+    statsCache = await SupabaseClient.getMyStats();
+    h2hCache = await SupabaseClient.getHeadToHead();
+  } catch (e) {
+    console.error('loadStats error:', e);
+    statsCache = statsCache || { roundsPlayed: 0, totalWon: 0, totalLost: 0, netTotal: 0, wins: 0, losses: 0, ties: 0, byCourse: {}, paymentsTotal: 0 };
+    h2hCache = h2hCache || [];
+  }
   render();
 }
 function renderStats() {
@@ -5595,6 +5635,10 @@ async function init() {
           for (const dc of dbCourses) {
             const existing = state.courses.find(c => c.name === dc.name);
             if (existing) {
+              // Update pars and SI from DB
+              if (dc.pars && dc.pars.length > 0) {
+                existing.holes = dc.pars.map((par, i) => ({ par, si: dc.si ? dc.si[i] : (existing.holes[i]?.si || (i + 1)) }));
+              }
               // Update tees from DB if they have ratings
               if (dc.tees && dc.tees.length > 0) {
                 existing.tees = dc.tees.map(t => typeof t === 'string' ? { name: t, si: null, rating: null } : { name: t.name, si: t.si || null, rating: t.rating || null });
