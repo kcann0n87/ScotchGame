@@ -2485,6 +2485,25 @@ function renderLogin() {
       h('input', { type: 'password', value: state.loginPassword || '', placeholder: '••••••••',
         oninput: e => { state.loginPassword = e.target.value; } })
     ) : null,
+    mode === 'signin' ? h('div', { style: 'text-align:right;margin-top:4px;' },
+      h('a', { href: '#', style: 'font-size:12px;color:var(--green-light);', onclick: async (e) => {
+        e.preventDefault();
+        if (!state.loginEmail || !state.loginEmail.trim()) {
+          state.loginError = 'Enter your email above first.';
+          render();
+          return;
+        }
+        try {
+          const { error } = await SupabaseClient.resetPassword(state.loginEmail.trim());
+          if (error) throw error;
+          state.loginMessage = 'Password reset email sent! Check your inbox.';
+          state.loginError = null;
+        } catch (err) {
+          state.loginError = err.message || String(err);
+        }
+        render();
+      }}, 'Forgot Password?')
+    ) : null,
     state.loginError ? h('div', { class: 'warning' }, state.loginError) : null,
     state.loginMessage ? h('div', { class: 'info' }, state.loginMessage) : null,
     h('button', { class: 'btn', style: 'margin-top:8px;', onclick: async () => {
@@ -2531,6 +2550,45 @@ function renderLogin() {
 function renderAccount() {
   const user = state.authUser;
   const profile = state.authProfile;
+  // Password recovery flow
+  if (user && SupabaseClient.isPasswordRecovery()) {
+    root.appendChild(h('div', { class: 'header' },
+      h('div', { class: 'header-row' },
+        h('span', { style: 'width:50px;' }),
+        h('h1', null, 'RESET PASSWORD'),
+        h('span', { style: 'width:50px;' })
+      )
+    ));
+    let newPw = '';
+    root.appendChild(h('div', { class: 'card' },
+      h('div', { class: 'icon', style: 'font-size:36px;text-align:center;margin-bottom:12px;' }, '🔑'),
+      h('p', { style: 'text-align:center;color:var(--muted);font-size:13px;' }, 'Enter your new password below.'),
+      h('div', { class: 'field' },
+        h('label', null, 'New Password'),
+        h('input', { type: 'password', placeholder: '••••••••', oninput: e => { newPw = e.target.value; } })
+      ),
+      state.loginError ? h('div', { class: 'warning' }, state.loginError) : null,
+      state.loginMessage ? h('div', { class: 'info' }, state.loginMessage) : null,
+      h('button', { class: 'btn', style: 'margin-top:8px;', onclick: async () => {
+        if (!newPw || newPw.length < 6) {
+          state.loginError = 'Password must be at least 6 characters.';
+          render();
+          return;
+        }
+        try {
+          const { error } = await SupabaseClient.updatePassword(newPw);
+          if (error) throw error;
+          state.loginError = null;
+          state.loginMessage = null;
+          render();
+        } catch (err) {
+          state.loginError = err.message || String(err);
+          render();
+        }
+      }}, 'Set New Password')
+    ));
+    return;
+  }
   root.appendChild(h('div', { class: 'header' },
     h('div', { class: 'header-row' },
       h('button', { class: 'back-btn', onclick: () => { state.screen = 'home'; render(); } }, '← Back'),

@@ -20,6 +20,7 @@ const SupabaseClient = (() => {
   let _client = null;
   let _user = null;
   let _profile = null;
+  let _passwordRecovery = false;
   const _listeners = [];
 
   function getSupabaseLib() {
@@ -71,6 +72,9 @@ const SupabaseClient = (() => {
       if (_user) {
         await loadProfile();
         await claimGuestRows();
+      }
+      if (event === 'PASSWORD_RECOVERY') {
+        _passwordRecovery = true;
       }
       notify();
     });
@@ -139,6 +143,19 @@ const SupabaseClient = (() => {
       options: { redirectTo: window.location.href }
     });
   }
+  async function resetPassword(email) {
+    if (!_client) throw new Error('Supabase not configured');
+    return _client.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.href
+    });
+  }
+  async function updatePassword(newPassword) {
+    if (!_client) throw new Error('Supabase not configured');
+    const result = await _client.auth.updateUser({ password: newPassword });
+    if (!result.error) _passwordRecovery = false;
+    return result;
+  }
+  function isPasswordRecovery() { return _passwordRecovery; }
   async function signOut() {
     if (!_client) return;
     await _client.auth.signOut();
@@ -453,6 +470,9 @@ const SupabaseClient = (() => {
     signUpWithEmail,
     signInWithMagicLink,
     signInWithGoogle,
+    resetPassword,
+    updatePassword,
+    isPasswordRecovery,
     signOut,
     updateProfile,
     // social
