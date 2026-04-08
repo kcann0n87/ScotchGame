@@ -119,6 +119,8 @@ html, body {
   padding: env(safe-area-inset-top) var(--space-lg) var(--space-md) var(--space-lg);
   padding-top: max(env(safe-area-inset-top), var(--space-md));
   box-shadow: var(--shadow-md);
+  position: sticky;
+  top: 0;
   z-index: 10;
   overflow: hidden;
 }
@@ -387,9 +389,7 @@ input[type="number"]::-webkit-outer-spin-button {
   color: white;
   padding: var(--space-md) var(--space-lg) var(--space-lg);
   text-align: center;
-  position: sticky;
-  top: 0;
-  z-index: 9;
+  position: relative;
   overflow: hidden;
 }
 .hole-header::before {
