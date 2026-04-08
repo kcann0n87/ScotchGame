@@ -1,7 +1,7 @@
 // ==================== SCOTCH APP UI ====================
 const App = (() => {
 
-const STORAGE_KEY = 'scotch_v1';
+const STORAGE_KEY = 'scotch_v2';
 let state = {
   screen: 'home',
   currentHoleIdx: 0,
