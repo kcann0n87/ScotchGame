@@ -1,5 +1,5 @@
 // ==================== SUPABASE CLIENT ====================
-// Thin wrapper around the Supabase JS client for auth + rounds/friends sync.
+// Thin wrapper around the Supabase JS client for auth + rounds sync.
 //
 // SETUP:
 //   1. Create a free project at https://supabase.com
@@ -189,7 +189,7 @@ const SupabaseClient = (() => {
     return data;
   }
 
-  // ---------- Friends / player search ----------
+  // ---------- Player search (used by round setup player picker) ----------
   async function searchUsersByName(query) {
     if (!_client) return [];
     try {
@@ -205,18 +205,6 @@ const SupabaseClient = (() => {
       console.warn('searchUsersByName exception:', e);
       return [];
     }
-  }
-  async function getFriends() {
-    if (!_client || !_user) return [];
-    const { data } = await _client
-      .from('friendships')
-      .select('friend_id, profiles:friend_id(id, display_name, email, handicap)')
-      .eq('user_id', _user.id);
-    return (data || []).map(r => r.profiles).filter(Boolean);
-  }
-  async function addFriend(friendId) {
-    if (!_client || !_user) return;
-    await _client.from('friendships').insert({ user_id: _user.id, friend_id: friendId });
   }
 
   // ---------- Rounds ----------
@@ -535,8 +523,6 @@ const SupabaseClient = (() => {
     updateProfile,
     // social
     searchUsersByName,
-    getFriends,
-    addFriend,
     // rounds
     saveRound,
     listMyRounds,

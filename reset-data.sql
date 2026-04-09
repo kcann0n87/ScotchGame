@@ -1,7 +1,6 @@
 -- ============================================================
 -- RESET DATA — wipes all rounds, round_players, payments, and
--- any active live_shares. Keeps profiles (users), friendships,
--- and courses intact.
+-- any active live_shares. Keeps profiles (users) and courses intact.
 --
 -- Run this in: Supabase Dashboard → SQL Editor → New Query
 --
@@ -33,6 +32,5 @@ select 'live_shares', count(*) from live_shares;
 -- ============================================================
 -- NOT TOUCHED (preserved):
 --   profiles       — user accounts, display names, handicaps
---   friendships    — friend connections
 --   courses        — course definitions + tees
 -- ============================================================

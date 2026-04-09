@@ -33,7 +33,6 @@ Total time: **~10 minutes.** Free tier is fine forever.
 
 This creates:
 - `profiles` — registered users
-- `friendships` — player relationships
 - `rounds` — full round data
 - `round_players` — per-player rows for each round
 - `live_shares` — temporary shareable codes

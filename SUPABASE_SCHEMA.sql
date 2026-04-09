@@ -26,14 +26,10 @@ create index if not exists profiles_display_name_idx on profiles using gin (to_t
 create index if not exists profiles_email_idx on profiles (email);
 
 -- ------------------------------------------------------------
--- 2. FRIENDSHIPS — directional for simplicity
+-- 2. (REMOVED) FRIENDSHIPS — feature dropped; table no longer used
 -- ------------------------------------------------------------
-create table if not exists friendships (
-  user_id uuid not null references profiles(id) on delete cascade,
-  friend_id uuid not null references profiles(id) on delete cascade,
-  created_at timestamptz default now(),
-  primary key (user_id, friend_id)
-);
+-- Drop the old friendships table if it exists from a prior install
+drop table if exists friendships cascade;
 
 -- ------------------------------------------------------------
 -- 3. ROUNDS — one row per completed round
@@ -95,7 +91,6 @@ create index if not exists live_shares_public_idx on live_shares (is_public, upd
 -- ROW LEVEL SECURITY
 -- ============================================================
 alter table profiles       enable row level security;
-alter table friendships    enable row level security;
 alter table rounds         enable row level security;
 alter table round_players  enable row level security;
 alter table live_shares    enable row level security;
@@ -107,14 +102,6 @@ drop policy if exists "profiles_update_own" on profiles;
 create policy "profiles_update_own" on profiles for update using (auth.uid() = id);
 drop policy if exists "profiles_insert_own" on profiles;
 create policy "profiles_insert_own" on profiles for insert with check (auth.uid() = id);
-
--- Friendships: users manage their own
-drop policy if exists "friendships_select_own" on friendships;
-create policy "friendships_select_own" on friendships for select using (auth.uid() = user_id);
-drop policy if exists "friendships_insert_own" on friendships;
-create policy "friendships_insert_own" on friendships for insert with check (auth.uid() = user_id);
-drop policy if exists "friendships_delete_own" on friendships;
-create policy "friendships_delete_own" on friendships for delete using (auth.uid() = user_id);
 
 -- Rounds: readable by any player linked to the round OR the scorer
 drop policy if exists "rounds_select_player" on rounds;

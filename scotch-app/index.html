@@ -1938,7 +1938,7 @@ const Scoring = (() => {
 </script>
 <script>
 // ==================== SUPABASE CLIENT ====================
-// Thin wrapper around the Supabase JS client for auth + rounds/friends sync.
+// Thin wrapper around the Supabase JS client for auth + rounds sync.
 //
 // SETUP:
 //   1. Create a free project at https://supabase.com
@@ -2128,7 +2128,7 @@ const SupabaseClient = (() => {
     return data;
   }
 
-  // ---------- Friends / player search ----------
+  // ---------- Player search (used by round setup player picker) ----------
   async function searchUsersByName(query) {
     if (!_client) return [];
     try {
@@ -2144,18 +2144,6 @@ const SupabaseClient = (() => {
       console.warn('searchUsersByName exception:', e);
       return [];
     }
-  }
-  async function getFriends() {
-    if (!_client || !_user) return [];
-    const { data } = await _client
-      .from('friendships')
-      .select('friend_id, profiles:friend_id(id, display_name, email, handicap)')
-      .eq('user_id', _user.id);
-    return (data || []).map(r => r.profiles).filter(Boolean);
-  }
-  async function addFriend(friendId) {
-    if (!_client || !_user) return;
-    await _client.from('friendships').insert({ user_id: _user.id, friend_id: friendId });
   }
 
   // ---------- Rounds ----------
@@ -2474,8 +2462,6 @@ const SupabaseClient = (() => {
     updateProfile,
     // social
     searchUsersByName,
-    getFriends,
-    addFriend,
     // rounds
     saveRound,
     listMyRounds,
@@ -2515,10 +2501,6 @@ let state = {
   loginDisplayName: '',
   loginMessage: null,
   loginError: null,
-  // Friends state
-  friendsList: null,          // cached friends
-  friendsSearchQuery: '',
-  friendsSearchResults: null,
   // Player picker modal
   playerPickerIndex: null,    // index into newRoundDraft.players currently being edited
   playerPickerQuery: '',
@@ -2838,7 +2820,6 @@ function render(preserveScroll) {
   else if (state.screen === 'account') renderAccount();
   else if (state.screen === 'history') renderHistory();
   else if (state.screen === 'stats') renderStats();
-  else if (state.screen === 'friends') renderFriends();
   else if (state.screen === 'liveView') renderLiveView();
   // Restore scroll position when re-rendering the same screen (or live view)
   if (preserveScroll || state.screen === 'liveView') requestAnimationFrame(() => window.scrollTo(0, scrollY));
@@ -5893,107 +5874,6 @@ function renderLiveView() {
 
   root.appendChild(h('div', { style: 'text-align:center;padding:20px;color:var(--muted);font-size:12px;' },
     'Auto-updates every few seconds as scores are entered.'));
-}
-
-// ==================== FRIENDS SCREEN ====================
-async function loadFriends() {
-  if (!SupabaseClient || !SupabaseClient.isConfigured() || !state.authUser) return;
-  state.friendsList = await SupabaseClient.getFriends();
-  render();
-}
-
-async function runFriendsSearch(query) {
-  state.friendsSearchQuery = query;
-  if (!query || query.trim().length < 2) {
-    state.friendsSearchResults = null;
-    render();
-    return;
-  }
-  const results = await SupabaseClient.searchUsersByName(query.trim());
-  // Filter out self and existing friends
-  const myId = state.authUser.id;
-  const friendIds = new Set((state.friendsList || []).map(f => f.id));
-  state.friendsSearchResults = results.filter(r => r.id !== myId && !friendIds.has(r.id));
-  render();
-}
-
-function renderFriends() {
-  root.appendChild(h('div', { class: 'header' },
-    h('div', { class: 'header-row' },
-      h('button', { class: 'back-btn', onclick: () => {
-        state.friendsSearchQuery = '';
-        state.friendsSearchResults = null;
-        state.screen = 'account';
-        render();
-      } }, '← Back'),
-      h('h1', null, 'FRIENDS'),
-      h('span', { style: 'width:50px;' })
-    )
-  ));
-
-  if (!state.authUser) {
-    root.appendChild(h('div', { class: 'card' },
-      h('div', { class: 'empty' }, 'Sign in to manage friends.')
-    ));
-    return;
-  }
-
-  if (state.friendsList === null) {
-    root.appendChild(h('div', { class: 'card' }, h('div', { class: 'empty' }, 'Loading…')));
-    loadFriends();
-    return;
-  }
-
-  // Search box
-  root.appendChild(h('div', { class: 'card' },
-    h('h2', null, 'Add a Friend'),
-    h('div', { style: 'font-size:12px;color:var(--muted);margin-bottom:10px;' },
-      'Search for other registered users by name.'),
-    h('div', { class: 'field' },
-      h('input', {
-        type: 'text',
-        value: state.friendsSearchQuery,
-        placeholder: 'Type a name…',
-        oninput: e => { runFriendsSearch(e.target.value); }
-      })
-    ),
-    state.friendsSearchResults && state.friendsSearchResults.length > 0
-      ? h('div', null,
-          ...state.friendsSearchResults.map(u => h('div', { class: 'list-item' },
-            h('div', null,
-              h('div', { class: 'main' }, u.display_name),
-              h('div', { class: 'sub' }, `Hcp ${u.handicap ?? 0}`)
-            ),
-            h('button', { class: 'btn btn-sm', style: 'width:auto;', onclick: async () => {
-              await SupabaseClient.addFriend(u.id);
-              state.friendsList = null;
-              state.friendsSearchQuery = '';
-              state.friendsSearchResults = null;
-              await loadFriends();
-            }}, '+ Add')
-          ))
-        )
-      : (state.friendsSearchQuery && state.friendsSearchQuery.length >= 2
-          ? h('div', { class: 'empty', style: 'padding:20px;' }, 'No users found.')
-          : null)
-  ));
-
-  // Friends list
-  root.appendChild(h('div', { class: 'card' },
-    h('h2', null, `My Friends (${state.friendsList.length})`),
-    state.friendsList.length === 0
-      ? h('div', { class: 'empty' },
-          h('div', { class: 'icon' }, '👥'),
-          'No friends yet. Search above to add one.')
-      : h('div', null,
-          ...state.friendsList.map(f => h('div', { class: 'list-item' },
-            h('div', null,
-              h('div', { class: 'main' }, f.display_name),
-              h('div', { class: 'sub' }, `Hcp ${f.handicap ?? 0} · ${f.email || ''}`)
-            )
-          ))
-        )
-  ));
 }
 
 // ==================== PLAYER PICKER MODAL (round setup) ====================
