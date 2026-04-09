@@ -3962,7 +3962,16 @@ function renderScoreRow(player, hIdx, round, team) {
     h('div', null,
       h('div', { class: 'pname' }, player.name),
       h('div', null,
-        h('span', { class: 'pteam' }, `Hcp ${player.handicap || 0}`),
+        h('span', { class: 'pteam', style: 'cursor:pointer;text-decoration:underline;text-decoration-style:dotted;', onclick: (e) => {
+          e.stopPropagation();
+          const newHcp = prompt(`Edit handicap for ${player.name}:`, String(player.handicap || 0));
+          if (newHcp !== null && newHcp.trim() !== '') {
+            player.handicap = parseInt(newHcp.trim(), 10) || 0;
+            round.baseStrokes = Scoring.computeBaseStrokes([...round.teamA, ...round.teamB]);
+            save();
+            render(true);
+          }
+        }}, `Hcp ${player.handicap || 0} ✎`),
         strokes > 0 ? h('span', { class: 'strokes' }, ` • ${'●'.repeat(strokes)}`) : null
       )
     ),
