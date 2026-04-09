@@ -115,6 +115,35 @@ function findTee(course, teeName) {
   return course.tees.find(t => t.name === teeName) || null;
 }
 
+// Return a copy of a course's tees sorted by rating descending (hardest first).
+// Unrated tees sink to the bottom, preserving their relative order.
+function sortedTees(course) {
+  if (!course || !Array.isArray(course.tees)) return [];
+  const rated = course.tees.filter(t => t.rating != null && !isNaN(parseFloat(t.rating)));
+  const unrated = course.tees.filter(t => !(t.rating != null && !isNaN(parseFloat(t.rating))));
+  rated.sort((a, b) => parseFloat(b.rating) - parseFloat(a.rating));
+  return [...rated, ...unrated];
+}
+
+// Per-course default tee picks requested by the user. If the named tee
+// exists on the course, use it; otherwise fall back to the highest-rated
+// (hardest) tee from sortedTees().
+const COURSE_DEFAULT_TEES = {
+  'Mizner CC': 'Blue/Gold',
+  'Bear Lakes CC — Lakes': 'Blue',
+  'Boca Rio GC': 'Red/White'
+};
+function defaultTeeForCourse(course) {
+  if (!course || !Array.isArray(course.tees) || course.tees.length === 0) return '';
+  const preferred = COURSE_DEFAULT_TEES[course.name];
+  if (preferred) {
+    const match = course.tees.find(t => t.name === preferred);
+    if (match) return match.name;
+  }
+  const sorted = sortedTees(course);
+  return sorted[0] ? sorted[0].name : course.tees[0].name;
+}
+
 // Get the SI array to use for a player based on their selected tee.
 // Returns an 18-element array (per-tee override) or null (use course default).
 function siArrayForTee(course, teeName) {
@@ -903,10 +932,10 @@ function renderNewRound() {
       : h('select', {
           onchange: e => {
             newRoundDraft.courseId = e.target.value;
-            // Reset all player tee selections for the new course
+            // Reset all player tee selections to the course's default
             const newCourse = state.courses.find(c => c.id === e.target.value);
-            const firstTee = (newCourse && newCourse.tees && newCourse.tees.length > 0) ? newCourse.tees[0].name : '';
-            for (const p of newRoundDraft.players) p.tees = firstTee;
+            const defTee = defaultTeeForCourse(newCourse);
+            for (const p of newRoundDraft.players) p.tees = defTee;
             render();
           }
         },
@@ -1065,9 +1094,10 @@ function renderNewRound() {
             h('label', null, 'Tees'),
             (() => {
               const course = state.courses.find(c => c.id === newRoundDraft.courseId);
-              const tees = (course && course.tees) || [];
-              // Default this player's tees to first option if not set
-              if (!p.tees && tees.length > 0) p.tees = tees[0].name;
+              // Sort tees hardest-first (highest rating at top of dropdown)
+              const tees = sortedTees(course);
+              // Default this player's tees to the course's configured default
+              if (!p.tees && tees.length > 0) p.tees = defaultTeeForCourse(course);
               return h('select', {
                 onchange: e => {
                   const v = e.target.value;
