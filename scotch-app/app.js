@@ -354,6 +354,16 @@ function renderHome() {
   );
   root.appendChild(header);
 
+  // Kick off a background load of public live games (once per home render)
+  if (state.authUser && typeof SupabaseClient !== 'undefined' && SupabaseClient.isConfigured() && !state._publicGamesLoading) {
+    state._publicGamesLoading = true;
+    SupabaseClient.listPublicLiveGames().then(list => {
+      state._publicGames = list || [];
+      state._publicGamesLoading = false;
+      render(true);
+    }).catch(() => { state._publicGamesLoading = false; });
+  }
+
   const hero = h('div', { class: 'card' },
     h('div', { style: 'text-align:center;padding:var(--space-lg) 0;' },
       h('div', { class: 'hero-icon' }, '⛳'),
@@ -393,6 +403,98 @@ function renderHome() {
         )
   );
   root.appendChild(accountCard);
+
+  // Live public games card — always shown when signed in
+  if (state.authUser && isCloudOn) {
+    const games = state._publicGames || [];
+    // Filter out my own currently-shared round to avoid duplication with the hero card
+    const visible = games.filter(g => !(state.liveShareCode && g.code === state.liveShareCode));
+    const loading = state._publicGamesLoading && !state._publicGames;
+    const liveCard = h('div', { class: 'card' },
+      h('div', { style: 'display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;' },
+        h('h2', { style: 'margin:0;' }, '📡 Live Now'),
+        h('button', {
+          class: 'btn secondary btn-sm',
+          style: 'width:auto;padding:6px 12px;font-size:11px;margin:0;',
+          onclick: () => {
+            state._publicGamesLoading = true;
+            render(true);
+            SupabaseClient.listPublicLiveGames().then(list => {
+              state._publicGames = list || [];
+              state._publicGamesLoading = false;
+              render(true);
+            }).catch(() => { state._publicGamesLoading = false; render(true); });
+          }
+        }, '↻ Refresh')
+      ),
+      visible.length === 0
+        ? h('div', { class: 'empty', style: 'padding:20px 10px;' },
+            h('div', { class: 'icon' }, '📡'),
+            h('div', { style: 'font-size:13px;color:var(--muted);' },
+              loading ? 'Loading live games…' : 'No live games right now'),
+            !loading ? h('div', { style: 'font-size:11px;color:var(--muted);margin-top:6px;' },
+              'Start a public round and it\'ll show up here for other players.') : null
+          )
+        : h('div', null,
+            h('div', { style: 'font-size:12px;color:var(--muted);margin-bottom:10px;' },
+              'Public rounds currently being played. Tap to watch.'),
+            ...visible.map(g => {
+            const d = g.data || {};
+            const courseName = (d.course && d.course.name) || 'Golf Round';
+            const teamA = d.teamA || [];
+            const teamB = d.teamB || [];
+            const namesA = teamA.map(p => (p.name || '?').split(' ')[0]).join('/');
+            const namesB = teamB.map(p => (p.name || '?').split(' ')[0]).join('/');
+            // Estimate hole in progress
+            const allP = [...teamA, ...teamB];
+            let played = 0;
+            for (let i = 0; i < 18; i++) {
+              if (allP.some(p => p.scores && p.scores[i] != null)) played++;
+            }
+            const updated = g.updated_at ? new Date(g.updated_at) : null;
+            const mins = updated ? Math.floor((Date.now() - updated.getTime()) / 60000) : null;
+            const timeStr = mins == null ? '' : mins < 1 ? 'just now' : mins < 60 ? `${mins}m ago` : `${Math.floor(mins/60)}h ago`;
+            return h('div', {
+              class: 'list-item',
+              style: 'cursor:pointer;',
+              onclick: () => {
+                // Navigate to live view
+                state.liveViewCode = g.code;
+                state.liveViewData = g.data || null;
+                state.screen = 'liveView';
+                render();
+                // Subscribe for live updates
+                if (typeof SupabaseClient !== 'undefined' && SupabaseClient.isConfigured()) {
+                  (async () => {
+                    try {
+                      state.liveViewUnsubscribe = await SupabaseClient.subscribeToLiveShare(g.code, (shareRow) => {
+                        if (shareRow && shareRow.data) {
+                          state.liveViewData = shareRow.data;
+                          render(true);
+                        }
+                      });
+                      state.liveChatMessages = [];
+                      state.liveChatHandle = SupabaseClient.subscribeLiveChat(g.code, (msg) => {
+                        state.liveChatMessages.push(msg);
+                        if (state.liveChatMessages.length > 100) state.liveChatMessages.shift();
+                        render(true);
+                      });
+                    } catch (e) { console.warn('live view subscribe failed:', e); }
+                  })();
+                }
+              }
+            },
+              h('div', { style: 'flex:1;min-width:0;' },
+                h('div', { class: 'main' }, `${namesA || '?'} vs ${namesB || '?'}`),
+                h('div', { class: 'sub' }, `${courseName} • hole ${Math.min(played + 1, 18)} • ${timeStr}`)
+              ),
+              h('div', { style: 'color:var(--green);font-weight:700;font-size:18px;' }, '›')
+            );
+          })
+        )
+    );
+    root.appendChild(liveCard);
+  }
 }
 
 // ---------- Courses screen ----------
@@ -658,6 +760,8 @@ function ensureDraft() {
       gameType: 'scotch',
       gameType1: 'scotch',
       gameType2: 'scotch',
+      isPublic: true,
+      editingRoundId: null,
       players: [
         p1,
         { id: uid(), name: '', handicap: '', team: 'A', stake: 'full', swing: false, tees: '', userId: null, invitedEmail: null },
@@ -670,13 +774,44 @@ function ensureDraft() {
 
 function renderNewRound() {
   ensureDraft();
+  const isEditing = !!newRoundDraft.editingRoundId;
   root.appendChild(h('div', { class: 'header' },
     h('div', { class: 'header-row' },
-      h('button', { class: 'back-btn', onclick: () => { newRoundDraft = null; state.screen = 'home'; render(); } }, '← Back'),
-      h('h1', null, 'New Round'),
+      h('button', { class: 'back-btn', onclick: () => {
+        if (isEditing) {
+          // Cancel edit — discard draft and return to round
+          newRoundDraft = null;
+          state.screen = 'round';
+          render();
+        } else {
+          newRoundDraft = null;
+          state.screen = 'home';
+          render();
+        }
+      } }, isEditing ? '← Cancel' : '← Back'),
+      h('h1', null, isEditing ? 'Edit Setup' : 'New Round'),
       h('span', { style: 'width:50px;' })
     )
   ));
+
+  // Public / Private toggle (only when cloud sync is on & user signed in & NOT editing existing round)
+  const cloudOn = state.authUser && typeof SupabaseClient !== 'undefined' && SupabaseClient.isConfigured();
+  if (cloudOn && !isEditing) {
+    const visibilityCard = h('div', { class: 'card' },
+      h('h2', null, 'Visibility'),
+      h('div', { style: 'font-size:12px;color:var(--muted);margin-bottom:8px;' },
+        'Public games appear on the home page of other signed-in users so they can watch live. Private games are only visible via the shared link.'),
+      h('div', { class: 'toggle-group' },
+        h('div', { class: `toggle ${newRoundDraft.isPublic ? 'active' : ''}`,
+          onclick: () => { newRoundDraft.isPublic = true; render(); } },
+          '🌐 Public', h('br'), h('span', { style: 'font-size:10px;' }, 'Anyone can watch')),
+        h('div', { class: `toggle ${!newRoundDraft.isPublic ? 'active' : ''}`,
+          onclick: () => { newRoundDraft.isPublic = false; render(); } },
+          '🔒 Private', h('br'), h('span', { style: 'font-size:10px;' }, 'Link only'))
+      )
+    );
+    root.appendChild(visibilityCard);
+  }
 
   // Playhouse toggle
   const playhouseCard = h('div', { class: 'card' },
@@ -987,9 +1122,9 @@ function renderNewRound() {
   );
   root.appendChild(playersCard);
 
-  // Start button
+  // Start / Save button
   root.appendChild(h('div', { class: 'card' },
-    h('button', { class: 'btn gold', onclick: () => {
+    h('button', { class: 'btn gold', onclick: async () => {
       const course = state.courses.find(c => c.id === newRoundDraft.courseId);
       if (!course) { alert('Pick a course'); return; }
       const teamA = newRoundDraft.players.filter(p => p.team === 'A').map(p => p.id);
@@ -1010,6 +1145,48 @@ function renderNewRound() {
         if (p.handicap === '' || p.handicap == null) p.handicap = 0;
         if (!p.name || !p.name.trim()) p.name = `Player ${i+1}`;
       });
+
+      if (isEditing && state.round && state.round.id === newRoundDraft.editingRoundId) {
+        // EDIT MODE: Apply changes to existing round in-place (preserves scores, ctps, etc.)
+        const rebuilt = newRound(
+          course,
+          newRoundDraft.players,
+          teamA, teamB,
+          mode,
+          newRoundDraft.playhouse,
+          newRoundDraft.startNine,
+          newRoundDraft.gameType,
+          newRoundDraft.gameType1,
+          newRoundDraft.gameType2
+        );
+        // Build lookup of old player scores by id
+        const oldScoresById = {};
+        for (const p of [...state.round.teamA, ...state.round.teamB]) {
+          oldScoresById[p.id] = p.scores ? p.scores.slice() : Array(18).fill(null);
+        }
+        // Preserve scores for players that existed before
+        for (const p of [...rebuilt.teamA, ...rebuilt.teamB]) {
+          if (oldScoresById[p.id]) p.scores = oldScoresById[p.id];
+        }
+        // Preserve per-hole state (ctp, polie, rolls, playhoused, indyBackChoice, golfFees, hostId)
+        rebuilt.id = state.round.id;
+        rebuilt.date = state.round.date;
+        rebuilt.holes = state.round.holes;
+        rebuilt.golfFees = state.round.golfFees || {};
+        rebuilt.hostId = state.round.hostId || null;
+        rebuilt.indyBackChoice = state.round.indyBackChoice || {};
+        state.round = rebuilt;
+        // Adjust current hole if startNine changed
+        if (state.currentHoleIdx == null) {
+          state.currentHoleIdx = newRoundDraft.startNine === 'back' ? 9 : 0;
+        }
+        newRoundDraft = null;
+        state.screen = 'round';
+        render();
+        return;
+      }
+
+      // CREATE MODE
       state.round = newRound(
         course,
         newRoundDraft.players,
@@ -1022,10 +1199,25 @@ function renderNewRound() {
         newRoundDraft.gameType2
       );
       state.currentHoleIdx = newRoundDraft.startNine === 'back' ? 9 : 0;
+      const wantPublic = !!newRoundDraft.isPublic;
       state.screen = 'round';
       newRoundDraft = null;
       render();
-    }}, 'Start Round')
+
+      // Auto-create a live share if user wants public visibility
+      if (wantPublic && state.authUser && typeof SupabaseClient !== 'undefined' && SupabaseClient.isConfigured()) {
+        try {
+          const share = await SupabaseClient.createLiveShare(state.round.id, true);
+          if (share) {
+            state.liveShareCode = share.code;
+            state.liveShareUrl = `${location.origin}${location.pathname}?live=${share.code}`;
+            await SupabaseClient.updateLiveShare(share.code, state.round, true);
+            save();
+            render();
+          }
+        } catch (e) { console.warn('auto public live share failed:', e); }
+      }
+    }}, isEditing ? 'Save Changes' : 'Start Round')
   ));
 
   // Player picker modal (only renders when playerPickerIndex is set)
@@ -1076,6 +1268,38 @@ function renderRound() {
         h('div', { class: 'sub' }, `${r.teamA.map(p=>p.name).join(' / ')} vs ${r.teamB.map(p=>p.name).join(' / ')}`)
       ),
       h('div', { style: 'display:flex;gap:4px;' },
+        h('button', {
+          class: 'back-btn',
+          title: 'Edit setup (players, handicaps, tees)',
+          onclick: () => {
+            // Rebuild newRoundDraft from the live round so user can edit setup
+            const allPlayers = [...r.teamA, ...r.teamB];
+            newRoundDraft = {
+              courseId: (state.courses.find(c => c.name === r.course.name) || {}).id || (state.courses[0] && state.courses[0].id),
+              mode: r.mode || '4man',
+              playhouse: !!r.playhouse,
+              startNine: r.startNine || 'front',
+              gameType: r.gameType || 'scotch',
+              gameType1: r.gameType1 || r.gameType || 'scotch',
+              gameType2: r.gameType2 || r.gameType || 'scotch',
+              isPublic: !!state.liveShareCode,
+              editingRoundId: r.id,
+              players: allPlayers.map(p => ({
+                id: p.id,
+                name: p.name,
+                handicap: p.handicap == null ? 0 : p.handicap,
+                team: r.teamA.some(x => x.id === p.id) ? 'A' : 'B',
+                stake: p.stake || 'full',
+                swing: !!p.swing,
+                tees: p.teesName || p.tees || '',
+                userId: p.userId || null,
+                invitedEmail: p.invitedEmail || null
+              }))
+            };
+            state.screen = 'newRound';
+            render();
+          }
+        }, '✎'),
         liveBtn,
         h('button', { class: 'back-btn', onclick: () => { state.screen = 'summary'; render(); } }, 'Σ')
       )
@@ -1493,16 +1717,7 @@ function renderScoreRow(player, hIdx, round, team) {
     h('div', null,
       h('div', { class: 'pname' }, player.name),
       h('div', null,
-        h('span', { class: 'pteam', style: 'cursor:pointer;text-decoration:underline;text-decoration-style:dotted;', onclick: (e) => {
-          e.stopPropagation();
-          const newHcp = prompt(`Edit handicap for ${player.name}:`, String(player.handicap || 0));
-          if (newHcp !== null && newHcp.trim() !== '') {
-            player.handicap = parseInt(newHcp.trim(), 10) || 0;
-            round.baseStrokes = Scoring.computeBaseStrokes([...round.teamA, ...round.teamB]);
-            save();
-            render(true);
-          }
-        }}, `Hcp ${player.handicap || 0} ✎`),
+        h('span', { class: 'pteam' }, `Hcp ${player.handicap || 0}`),
         strokes > 0 ? h('span', { class: 'strokes' }, ` • ${'●'.repeat(strokes)}`) : null
       )
     ),

@@ -424,19 +424,35 @@ const SupabaseClient = (() => {
   }
 
   // ---------- Live share ----------
-  async function createLiveShare(roundLocalId) {
+  async function createLiveShare(roundLocalId, isPublic) {
     if (!_client || !_user) return null;
     const code = Math.random().toString(36).slice(2, 8).toUpperCase();
     const { data } = await _client
       .from('live_shares')
-      .insert({ code, scorer_id: _user.id, round_local_id: roundLocalId })
+      .insert({ code, scorer_id: _user.id, round_local_id: roundLocalId, is_public: !!isPublic })
       .select()
       .single();
     return data;
   }
-  async function updateLiveShare(code, round) {
+  async function updateLiveShare(code, round, isPublic) {
     if (!_client) return;
-    await _client.from('live_shares').update({ data: round, updated_at: new Date().toISOString() }).eq('code', code);
+    const patch = { data: round, updated_at: new Date().toISOString() };
+    if (typeof isPublic === 'boolean') patch.is_public = isPublic;
+    await _client.from('live_shares').update(patch).eq('code', code);
+  }
+  async function listPublicLiveGames() {
+    if (!_client) return [];
+    // Only games updated in the last 8 hours count as "in progress"
+    const cutoff = new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString();
+    const { data, error } = await _client
+      .from('live_shares')
+      .select('code, data, updated_at, scorer_id')
+      .eq('is_public', true)
+      .gte('updated_at', cutoff)
+      .order('updated_at', { ascending: false })
+      .limit(20);
+    if (error) { console.warn('listPublicLiveGames error:', error); return []; }
+    return data || [];
   }
   async function subscribeToLiveShare(code, onUpdate) {
     if (!_client) return null;
@@ -521,6 +537,7 @@ const SupabaseClient = (() => {
     createLiveShare,
     updateLiveShare,
     subscribeToLiveShare,
-    subscribeLiveChat
+    subscribeLiveChat,
+    listPublicLiveGames
   };
 })();

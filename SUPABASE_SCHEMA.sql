@@ -81,11 +81,15 @@ create table if not exists live_shares (
   scorer_id uuid not null references profiles(id) on delete cascade,
   round_local_id text,
   data jsonb,
+  is_public boolean default false,
   created_at timestamptz default now(),
   updated_at timestamptz default now(),
   expires_at timestamptz default (now() + interval '48 hours')
 );
 create index if not exists live_shares_scorer_idx on live_shares (scorer_id);
+-- Add is_public to existing tables
+alter table live_shares add column if not exists is_public boolean default false;
+create index if not exists live_shares_public_idx on live_shares (is_public, updated_at desc) where is_public = true;
 
 -- ============================================================
 -- ROW LEVEL SECURITY
