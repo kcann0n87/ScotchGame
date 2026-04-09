@@ -3121,17 +3121,17 @@ function renderLiveView() {
           )
     ),
     // Input row
-    chatReady ? h('div', { style: 'display:flex;gap:8px;' },
+    chatReady ? h('div', { style: 'display:flex;gap:8px;align-items:stretch;' },
       h('input', {
         type: 'text',
         id: 'chat-input',
         placeholder: 'Type a message…',
         value: state.liveChatInput || '',
-        style: 'flex:1;',
+        style: 'flex:1;min-width:0;font-size:15px;padding:12px 14px;',
         oninput: e => { state.liveChatInput = e.target.value; },
         onkeydown: e => { if (e.key === 'Enter') sendChat(); }
       }),
-      h('button', { class: 'btn', style: 'padding:8px 16px;', onclick: sendChat }, 'Send')
+      h('button', { class: 'btn', style: 'flex:0 0 auto;width:auto;min-width:64px;padding:0 18px;font-size:14px;margin:0;', onclick: sendChat }, 'Send')
     ) : null
   );
   root.appendChild(chatCard);
