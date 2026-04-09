@@ -2096,11 +2096,22 @@ const SupabaseClient = (() => {
   }
   function isPasswordRecovery() { return _passwordRecovery; }
   async function signOut() {
-    if (!_client) return;
-    await _client.auth.signOut();
+    // Clear local state FIRST so the UI updates even if the network call hangs/fails
     _user = null;
     _profile = null;
+    _passwordRecovery = false;
     notify();
+    if (!_client) return;
+    // Use scope: 'local' to avoid network dependency — signs out locally
+    // without trying to revoke the token on the server. Falls back to
+    // a default signOut if the local scope isn't supported.
+    try {
+      await _client.auth.signOut({ scope: 'local' });
+    } catch (e) {
+      try { await _client.auth.signOut(); } catch (e2) {
+        console.warn('signOut error (ignored, local state already cleared):', e2);
+      }
+    }
   }
 
   // ---------- Profile ----------
@@ -2544,6 +2555,12 @@ function load() {
     const s = localStorage.getItem(STORAGE_KEY);
     if (s) state = Object.assign(state, JSON.parse(s));
   } catch (e) {}
+  // Don't trust cached auth state — Supabase is the source of truth.
+  // Supabase.init() will repopulate authUser/authProfile from its own
+  // session storage. Without this, a stale cached authUser can reappear
+  // after signOut until the page is reloaded.
+  state.authUser = null;
+  state.authProfile = null;
   // Migrate older course shapes to the simple { name, holes, tees: [names] } shape
   if (state.courses) {
     for (const c of state.courses) migrateCourse(c);
@@ -5377,9 +5394,17 @@ function renderAccount() {
     h('button', { class: 'btn secondary', style: 'margin-top:8px;',
       onclick: () => { state.screen = 'stats'; render(); } }, 'Stats'),
     h('button', { class: 'btn danger', style: 'margin-top:16px;', onclick: async () => {
-      await SupabaseClient.signOut();
+      // Clear local state FIRST so the button press always visually logs out,
+      // even if the remote call stalls or errors.
+      state.authUser = null;
+      state.authProfile = null;
+      statsCache = null;
+      h2hCache = null;
+      historyCache = null;
       state.screen = 'home';
+      save();
       render();
+      try { await SupabaseClient.signOut(); } catch (e) { console.warn('signOut failed:', e); }
     }}, 'Sign Out')
   ));
 }
@@ -5461,7 +5486,9 @@ function renderStats() {
     h('div', { class: 'header-row' },
       h('button', { class: 'back-btn', onclick: () => { state.screen = 'account'; render(); } }, '← Back'),
       h('h1', null, 'STATS'),
-      h('span', { style: 'width:50px;' })
+      h('button', { class: 'back-btn', title: 'Refresh',
+        onclick: () => { statsCache = null; h2hCache = null; render(); }
+      }, '↻')
     )
   ));
   if (!state.authUser) {
@@ -5473,13 +5500,30 @@ function renderStats() {
     loadStats();
     return;
   }
+  // Silent background refresh so admin payments propagate on next render
+  if (!state._statsRefreshing) {
+    state._statsRefreshing = true;
+    SupabaseClient.getMyStats().then(fresh => {
+      state._statsRefreshing = false;
+      if (fresh && JSON.stringify(fresh) !== JSON.stringify(statsCache)) {
+        statsCache = fresh;
+        if (state.screen === 'stats') render(true);
+      }
+    }).catch(() => { state._statsRefreshing = false; });
+  }
   const s = statsCache;
-  const netColor = s.netTotal > 0 ? 'var(--green-light)' : s.netTotal < 0 ? 'var(--team-b)' : 'var(--muted)';
+  // Current Balance = rounds net + admin payments (same as account/home card)
+  const bal = s.ledgerBalance != null ? s.ledgerBalance : s.netTotal;
   root.appendChild(h('div', { class: 'result-banner' },
     h('div', { class: 'label' }, 'Current Balance'),
-    h('div', { class: 'amount', style: `color:${s.netTotal < 0 ? '#ffb3ad' : 'white'};` },
-      s.netTotal === 0 ? 'Even' : s.netTotal > 0 ? `+$${s.netTotal}` : `−$${Math.abs(s.netTotal)}`
-    )
+    h('div', { class: 'amount', style: `color:${bal < 0 ? '#ffb3ad' : 'white'};` },
+      bal === 0 ? 'Even' : bal > 0 ? `+$${bal}` : `−$${Math.abs(bal)}`
+    ),
+    (s.paymentsTotal !== 0)
+      ? h('div', { style: 'font-size:11px;opacity:0.75;margin-top:4px;' },
+          `Rounds: ${s.netTotal >= 0 ? '+' : '−'}$${Math.abs(s.netTotal)}  •  Payments: ${s.paymentsTotal >= 0 ? '+' : '−'}$${Math.abs(s.paymentsTotal)}`
+        )
+      : null
   ));
   root.appendChild(h('div', { class: 'card' },
     h('h2', null, 'Totals'),

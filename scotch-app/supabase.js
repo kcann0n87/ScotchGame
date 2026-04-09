@@ -157,11 +157,22 @@ const SupabaseClient = (() => {
   }
   function isPasswordRecovery() { return _passwordRecovery; }
   async function signOut() {
-    if (!_client) return;
-    await _client.auth.signOut();
+    // Clear local state FIRST so the UI updates even if the network call hangs/fails
     _user = null;
     _profile = null;
+    _passwordRecovery = false;
     notify();
+    if (!_client) return;
+    // Use scope: 'local' to avoid network dependency — signs out locally
+    // without trying to revoke the token on the server. Falls back to
+    // a default signOut if the local scope isn't supported.
+    try {
+      await _client.auth.signOut({ scope: 'local' });
+    } catch (e) {
+      try { await _client.auth.signOut(); } catch (e2) {
+        console.warn('signOut error (ignored, local state already cleared):', e2);
+      }
+    }
   }
 
   // ---------- Profile ----------
