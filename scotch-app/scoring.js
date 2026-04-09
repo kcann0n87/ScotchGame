@@ -224,9 +224,11 @@ const Scoring = (() => {
         else b = b * 2;
       }
       const roll0 = hole.roll || 1;
-      if (roll0 > 1) { a *= roll0; b *= roll0; }
       const ph0 = !!hole.playhoused && !!round.playhouse;
-      if (ph0) { a *= 2; b *= 2; }
+      // On a playhouse hole: 2x base, 3x on press, 4x on reroll
+      // Normal (non-playhouse): roll multiplier is 1, 2, or 3
+      const mult0 = ph0 ? (roll0 === 1 ? 2 : roll0 === 2 ? 3 : 4) : roll0;
+      if (mult0 > 1) { a *= mult0; b *= mult0; }
       bd.blitz = blitz ? blitzTeam : null;
       bd.keepTake = keepTake;
       bd.roll = roll0;
@@ -286,20 +288,17 @@ const Scoring = (() => {
       else b = b * 2;
     }
 
-    // Roll multiplier (1x default, 2x = trailing team rolled, 3x = leader re-rolled)
-    // Stacks multiplicatively on top of blitz. Applies to both teams equally.
+    // Roll + Playhouse combined multiplier.
+    // Normal (non-playhouse): 1x = no roll, 2x = press, 3x = reroll
+    // Playhouse: 2x = no roll, 3x = press, 4x = reroll
     const roll = hole.roll || 1;
-    if (roll > 1) {
-      a = a * roll;
-      b = b * roll;
-    }
-
-    // Playhouse: doubles the hole. Only applies if the round is a playhouse game
-    // AND this specific hole was playhoused.
     const playhoused = !!hole.playhoused && !!round.playhouse;
-    if (playhoused) {
-      a = a * 2;
-      b = b * 2;
+    const combinedMult = playhoused
+      ? (roll === 1 ? 2 : roll === 2 ? 3 : 4)
+      : roll;
+    if (combinedMult > 1) {
+      a = a * combinedMult;
+      b = b * combinedMult;
     }
 
     bd.blitz = blitz ? blitzTeam : null;
