@@ -5529,25 +5529,38 @@ function renderLiveView() {
   ));
 
   // ====== LIVE CHAT ======
+  // Auto-set chat name from profile if logged in
+  if (!state.liveChatName && state.authProfile && state.authProfile.display_name) {
+    state.liveChatName = state.authProfile.display_name.split(' ')[0];
+  }
+  const chatReady = !!state.liveChatName;
+
+  function sendChat() {
+    if (!state.liveChatInput.trim() || !state.liveChatHandle) return;
+    const msg = { name: state.liveChatName, text: state.liveChatInput.trim(), ts: Date.now() };
+    state.liveChatHandle.send(msg);
+    state.liveChatMessages.push(msg);
+    if (state.liveChatMessages.length > 100) state.liveChatMessages.shift();
+    state.liveChatInput = '';
+    render(true);
+  }
+
   const chatCard = h('div', { class: 'card' },
     h('h2', null, '💬 Live Chat'),
-    // Name input if not set
-    !state.liveChatName ? h('div', { style: 'margin-bottom:10px;' },
-      h('div', { class: 'field' },
-        h('label', null, 'Your Name'),
-        h('input', {
-          type: 'text',
-          placeholder: 'Enter your name to chat…',
-          style: 'width:100%;',
-          onkeydown: e => {
-            if (e.key === 'Enter' && e.target.value.trim()) {
-              state.liveChatName = e.target.value.trim();
-              render(true);
-            }
+    // Name prompt only if not logged in
+    !chatReady ? h('div', { style: 'display:flex;gap:8px;margin-bottom:10px;' },
+      h('input', {
+        type: 'text',
+        placeholder: 'Enter your name…',
+        style: 'flex:1;',
+        onkeydown: e => {
+          if (e.key === 'Enter' && e.target.value.trim()) {
+            state.liveChatName = e.target.value.trim();
+            render(true);
           }
-        })
-      ),
-      h('div', { style: 'font-size:11px;color:var(--muted);' }, 'Press Enter to join chat')
+        }
+      }),
+      h('div', { style: 'font-size:11px;color:var(--muted);align-self:center;' }, 'Press Enter')
     ) : null,
     // Messages
     h('div', {
@@ -5568,7 +5581,7 @@ function renderLiveView() {
           )
     ),
     // Input row
-    state.liveChatName ? h('div', { style: 'display:flex;gap:8px;' },
+    chatReady ? h('div', { style: 'display:flex;gap:8px;' },
       h('input', {
         type: 'text',
         id: 'chat-input',
@@ -5576,27 +5589,9 @@ function renderLiveView() {
         value: state.liveChatInput || '',
         style: 'flex:1;',
         oninput: e => { state.liveChatInput = e.target.value; },
-        onkeydown: e => {
-          if (e.key === 'Enter' && state.liveChatInput.trim() && state.liveChatHandle) {
-            const msg = { name: state.liveChatName, text: state.liveChatInput.trim(), ts: Date.now() };
-            state.liveChatHandle.send(msg);
-            state.liveChatMessages.push(msg);
-            if (state.liveChatMessages.length > 100) state.liveChatMessages.shift();
-            state.liveChatInput = '';
-            render(true);
-          }
-        }
+        onkeydown: e => { if (e.key === 'Enter') sendChat(); }
       }),
-      h('button', { class: 'btn', style: 'padding:8px 16px;', onclick: () => {
-        if (state.liveChatInput.trim() && state.liveChatHandle) {
-          const msg = { name: state.liveChatName, text: state.liveChatInput.trim(), ts: Date.now() };
-          state.liveChatHandle.send(msg);
-          state.liveChatMessages.push(msg);
-          if (state.liveChatMessages.length > 100) state.liveChatMessages.shift();
-          state.liveChatInput = '';
-          render(true);
-        }
-      }}, 'Send')
+      h('button', { class: 'btn', style: 'padding:8px 16px;', onclick: sendChat }, 'Send')
     ) : null
   );
   root.appendChild(chatCard);
