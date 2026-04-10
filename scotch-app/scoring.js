@@ -89,26 +89,22 @@ const Scoring = (() => {
       }
       for (const seg of active) seg.diff += d;
 
-      // Chain press: only the most recent press in this nine can spawn another
+      // Chain press: only the most recent press in this nine can spawn another.
+      // `spawned` bounds oscillation; either direction of a ±2 swing is valid.
       const pressesInNine = presses.filter(p => p.endHole === nineMain.endHole);
       const trigger = pressesInNine.length > 0
         ? pressesInNine[pressesInNine.length - 1]
         : nineMain;
 
       if (!trigger.spawned && h < trigger.endHole) {
-        const meets = trigger.chainSign
-          ? (trigger.chainSign > 0 ? trigger.diff >= 2 : trigger.diff <= -2)
-          : Math.abs(trigger.diff) >= 2;
-        if (meets) {
+        if (Math.abs(trigger.diff) >= 2) {
           trigger.spawned = true;
-          const dir = trigger.chainSign || (trigger.diff > 0 ? 1 : -1);
           presses.push({
             startHole: h + 1,
             endHole: trigger.endHole,
             name: `Press @${h + 2}`,
             diff: 0,
-            spawned: false,
-            chainSign: dir
+            spawned: false
           });
         }
       }
@@ -409,11 +405,11 @@ const Scoring = (() => {
 
   // ---------- Top game: Low + Total match play with 4-down presses ----------
   // Each hole: team wins low (1 pt), wins total (1 pt).
-  // Press rule: each segment can spawn ONE press (when the trailing team goes ≥4 down).
-  // After that, the newly opened press can spawn the next one, BUT only in the same
-  // direction as the parent chain (the team that was trailing in the main must still
-  // be trailing in the chained press by ≥4). This prevents spurious presses when the
-  // score oscillates back and forth across a big lead.
+  // Press rule: each segment (main or press) can spawn AT MOST ONE child press.
+  // A press fires whenever the current trigger (main, or the most recently opened
+  // press in that nine) reaches ±4 in either direction. Because each segment can
+  // only spawn once, oscillation is bounded — the chain walks forward through
+  // whichever swing reaches ±4 next, in either direction.
   function computeTopGame(round) {
     const frontMain = { startHole: 0, endHole: 8, name: 'Front', points: [], spawned: false };
     const backMain  = { startHole: 9, endHole: 17, name: 'Back',  points: [], spawned: false };
@@ -451,22 +447,17 @@ const Scoring = (() => {
       if (!trigger.spawned && h < trigger.endHole) {
         const d = segTotal(trigger);
         const diff = d.a - d.b;
-        // Main segment: either team's lead of ≥4 triggers the first press.
-        // Chained press: only spawn when the diff continues in the SAME direction
-        // as the original lead (the trailing team is falling further behind).
-        const meets = trigger.chainSign
-          ? (trigger.chainSign > 0 ? diff >= 4 : diff <= -4)
-          : Math.abs(diff) >= 4;
-        if (meets) {
+        // A press spawns whenever the current trigger (main or most recent press)
+        // reaches ±4. The `spawned` flag guarantees each press can spawn at most
+        // one child, so runaway oscillation is impossible.
+        if (Math.abs(diff) >= 4) {
           trigger.spawned = true;
-          const dir = trigger.chainSign || (diff > 0 ? 1 : -1);
           presses.push({
             startHole: h + 1,
             endHole: trigger.endHole,
             name: `Press @${h+2}`,
             points: [],
-            spawned: false,
-            chainSign: dir
+            spawned: false
           });
         }
       }
@@ -508,8 +499,8 @@ const Scoring = (() => {
       }
 
       // Chained press: only the most recent press in this nine can spawn another.
-      // A chained press only fires when the diff continues in the SAME direction as
-      // the parent chain (prevents spurious spawns from oscillation).
+      // The `spawned` flag guarantees each press spawns at most one child, which
+      // bounds runaway oscillation. Either direction of a ±2 swing is valid.
       const nineMain = h <= 8 ? frontMain : backMain;
       const pressesInNine = presses.filter(p => p.endHole === nineMain.endHole);
       const trigger = pressesInNine.length > 0
@@ -519,19 +510,14 @@ const Scoring = (() => {
       if (!trigger.spawned && h < trigger.endHole) {
         const d = segTotal(trigger);
         const diff = d.a - d.b;
-        const meets = trigger.chainSign
-          ? (trigger.chainSign > 0 ? diff >= 2 : diff <= -2)
-          : Math.abs(diff) >= 2;
-        if (meets) {
+        if (Math.abs(diff) >= 2) {
           trigger.spawned = true;
-          const dir = trigger.chainSign || (diff > 0 ? 1 : -1);
           presses.push({
             startHole: h + 1,
             endHole: trigger.endHole,
             name: `Press @${h+2}`,
             points: [],
-            spawned: false,
-            chainSign: dir
+            spawned: false
           });
         }
       }
