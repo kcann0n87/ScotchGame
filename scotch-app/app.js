@@ -253,7 +253,7 @@ function courseFromPreset(preset) {
 }
 
 // ---------- Round factory ----------
-function newRound(course, players, teamAIds, teamBIds, mode, playhouse, startNine, gameType, gameType1, gameType2, indyFormat, indyBackDouble) {
+function newRound(course, players, teamAIds, teamBIds, mode, playhouse, startNine, gameType, gameType1, gameType2) {
   const pars = course.holes.map(h => h.par);
   const sn = startNine === 'back' ? 'back' : 'front';
   // Clone the course so we can apply startNine swap without mutating the master course
@@ -291,8 +291,10 @@ function newRound(course, players, teamAIds, teamBIds, mode, playhouse, startNin
     gameType: gameType || 'scotch',
     gameType1: gameType1 || gameType || 'scotch',
     gameType2: gameType2 || gameType || 'scotch',
-    indyFormat: indyFormat === 'auto2down' ? 'auto2down' : '3way',
-    indyBackDouble: !!indyBackDouble,
+    // Per-matchup individual Nassau formats, keyed by indyKey(aId, bId).
+    // Each entry: { format: '3way' | 'auto2down', backDouble: bool }.
+    // Populated on the Indy Format screen (state.screen = 'indyFormat') before hole 1.
+    indyMatchFormats: {},
     course: courseForRound,
     teamA,
     teamB,
@@ -363,6 +365,7 @@ function render(preserveScroll) {
   else if (state.screen === 'newRound') renderNewRound();
   else if (state.screen === 'courses') renderCourses();
   else if (state.screen === 'courseEdit') renderCourseEdit();
+  else if (state.screen === 'indyFormat') renderIndyFormat();
   else if (state.screen === 'round') renderRound();
   else if (state.screen === 'summary') renderSummary();
   else if (state.screen === 'login') renderLogin();
@@ -772,8 +775,6 @@ function ensureDraft() {
       gameType: 'scotch',
       gameType1: 'scotch',
       gameType2: 'scotch',
-      indyFormat: '3way',
-      indyBackDouble: false,
       isPublic: true,
       editingRoundId: null,
       players: [
@@ -841,41 +842,8 @@ function renderNewRound() {
   );
   root.appendChild(playhouseCard);
 
-  // Individual Nassau format
-  const indyFormatCard = h('div', { class: 'card' },
-    h('h2', null, 'Individual Nassau Format'),
-    h('div', { style: 'font-size:12px;color:var(--muted);margin-bottom:8px;' },
-      'How the player-vs-player Nassau side bets work. 3-Way uses the classic front/back/total with a press choice at the turn. 2-Down Auto-Presses automatically opens a new press whenever a player falls 2 strokes down within a segment.'),
-    h('div', { class: 'toggle-group' },
-      h('div', {
-        class: `toggle ${(newRoundDraft.indyFormat || '3way') === '3way' ? 'active' : ''}`,
-        onclick: () => { newRoundDraft.indyFormat = '3way'; render(); }
-      }, '3-Way', h('br'), h('span', { style: 'font-size:10px;' }, 'Front / Back / Total + turn press')),
-      h('div', {
-        class: `toggle ${newRoundDraft.indyFormat === 'auto2down' ? 'active' : ''}`,
-        onclick: () => { newRoundDraft.indyFormat = 'auto2down'; render(); }
-      }, '2-Down Auto', h('br'), h('span', { style: 'font-size:10px;' }, 'Auto-press when 2 strokes down'))
-    ),
-    // Back-9-double sub-option for auto-press mode
-    newRoundDraft.indyFormat === 'auto2down'
-      ? h('div', { style: 'margin-top:12px;' },
-          h('h3', { style: 'margin-bottom:4px;' }, 'Back 9 Stakes'),
-          h('div', { style: 'font-size:11px;color:var(--muted);margin-bottom:6px;' },
-            'When enabled, the back 9 base bet is worth 2× (e.g. $200 instead of $100). Any new auto-presses that spawn on the back 9 still pay the normal 1× stake. (If you start on the back nine, the second nine played is doubled instead.)'),
-          h('div', { class: 'toggle-group' },
-            h('div', {
-              class: `toggle ${!newRoundDraft.indyBackDouble ? 'active' : ''}`,
-              onclick: () => { newRoundDraft.indyBackDouble = false; render(); }
-            }, 'Normal', h('br'), h('span', { style: 'font-size:10px;' }, 'All segments 1×')),
-            h('div', {
-              class: `toggle ${newRoundDraft.indyBackDouble ? 'active' : ''}`,
-              onclick: () => { newRoundDraft.indyBackDouble = true; render(); }
-            }, 'Back Doubled', h('br'), h('span', { style: 'font-size:10px;' }, 'Back base = 2×, presses 1×'))
-          )
-        )
-      : null
-  );
-  root.appendChild(indyFormatCard);
+  // Individual Nassau per-matchup format is chosen on the next screen
+  // (after Start Round) so players can pick 3-Way or 2-Down Auto per pair.
 
   // Mode selector
   const modeCard = h('div', { class: 'card' },
@@ -1208,10 +1176,10 @@ function renderNewRound() {
           newRoundDraft.startNine,
           newRoundDraft.gameType,
           newRoundDraft.gameType1,
-          newRoundDraft.gameType2,
-          newRoundDraft.indyFormat,
-          newRoundDraft.indyBackDouble
+          newRoundDraft.gameType2
         );
+        // Preserve existing per-match indy formats (edit mode should not reset choices)
+        rebuilt.indyMatchFormats = state.round.indyMatchFormats || {};
         // Build lookup of old player scores by id
         const oldScoresById = {};
         for (const p of [...state.round.teamA, ...state.round.teamB]) {
@@ -1249,13 +1217,20 @@ function renderNewRound() {
         newRoundDraft.startNine,
         newRoundDraft.gameType,
         newRoundDraft.gameType1,
-        newRoundDraft.gameType2,
-        newRoundDraft.indyFormat,
-        newRoundDraft.indyBackDouble
+        newRoundDraft.gameType2
       );
+      // Seed every A×B matchup with a default format so the Indy Format screen
+      // has a complete list to render.
+      for (const pa of state.round.teamA) {
+        for (const pb of state.round.teamB) {
+          const k = Scoring.indyKey(pa.id, pb.id);
+          state.round.indyMatchFormats[k] = { format: '3way', backDouble: false };
+        }
+      }
       state.currentHoleIdx = newRoundDraft.startNine === 'back' ? 9 : 0;
       const wantPublic = !!newRoundDraft.isPublic;
-      state.screen = 'round';
+      // Detour through the per-matchup Nassau format screen before play begins.
+      state.screen = 'indyFormat';
       newRoundDraft = null;
       render();
 
@@ -1278,6 +1253,114 @@ function renderNewRound() {
   // Player picker modal (only renders when playerPickerIndex is set)
   const modal = renderPlayerPickerModal();
   if (modal) root.appendChild(modal);
+}
+
+// ---------- Per-matchup Individual Nassau format screen ----------
+// Shown after Start Round is pressed and before the first hole. Each A×B pair
+// picks its own format (3-Way or 2-Down Auto), and auto-press matches get the
+// Back Doubled sub-option.
+function renderIndyFormat() {
+  const r = state.round;
+  if (!r) { state.screen = 'home'; return render(); }
+  if (!r.indyMatchFormats) r.indyMatchFormats = {};
+  // If true, this screen was reached from the round (mid-game edit), so
+  // the Back button returns to the round rather than discarding it.
+  const isMidRoundEdit = !!state._indyFormatMidRoundEdit;
+
+  root.appendChild(h('div', { class: 'header' },
+    h('div', { class: 'header-row' },
+      h('button', { class: 'back-btn', onclick: () => {
+        if (isMidRoundEdit) {
+          state._indyFormatMidRoundEdit = false;
+          state.screen = 'round';
+          render();
+        } else {
+          // Fresh round flow — going back discards the round and returns to setup
+          state.round = null;
+          state.screen = 'newRound';
+          render();
+        }
+      } }, '← Back'),
+      h('h1', null, 'Individual Matches'),
+      h('span', { style: 'width:50px;' })
+    )
+  ));
+
+  root.appendChild(h('div', { class: 'card' },
+    h('div', { style: 'font-size:13px;color:var(--muted);margin-bottom:4px;' },
+      'Pick the Nassau format for each player-vs-player matchup. You can mix formats — not every pair has to play the same game.')
+  ));
+
+  // Bulk action row — handy for quickly setting all matches to one format
+  const setAll = (fmt) => {
+    for (const k in r.indyMatchFormats) {
+      r.indyMatchFormats[k].format = fmt;
+      if (fmt !== 'auto2down') r.indyMatchFormats[k].backDouble = false;
+    }
+    save();
+    render();
+  };
+  root.appendChild(h('div', { class: 'card' },
+    h('h3', { style: 'margin-top:0;' }, 'Quick Set'),
+    h('div', { class: 'toggle-group' },
+      h('div', { class: 'toggle', onclick: () => setAll('3way') }, 'All 3-Way'),
+      h('div', { class: 'toggle', onclick: () => setAll('auto2down') }, 'All 2-Down Auto')
+    )
+  ));
+
+  for (const pa of r.teamA) {
+    for (const pb of r.teamB) {
+      const key = Scoring.indyKey(pa.id, pb.id);
+      const entry = r.indyMatchFormats[key] || (r.indyMatchFormats[key] = { format: '3way', backDouble: false });
+      root.appendChild(h('div', { class: 'card' },
+        h('h3', { style: 'margin-top:0;margin-bottom:8px;' }, `${pa.name} vs ${pb.name}`),
+        h('div', { class: 'toggle-group' },
+          h('div', {
+            class: `toggle ${entry.format === '3way' ? 'active' : ''}`,
+            onclick: () => {
+              entry.format = '3way';
+              entry.backDouble = false;
+              save();
+              render();
+            }
+          }, '3-Way', h('br'), h('span', { style: 'font-size:10px;' }, 'Front / Back / Total + turn press')),
+          h('div', {
+            class: `toggle ${entry.format === 'auto2down' ? 'active' : ''}`,
+            onclick: () => {
+              entry.format = 'auto2down';
+              save();
+              render();
+            }
+          }, '2-Down Auto', h('br'), h('span', { style: 'font-size:10px;' }, 'Auto-press every 2 strokes down'))
+        ),
+        entry.format === 'auto2down'
+          ? h('div', { style: 'margin-top:10px;' },
+              h('div', { style: 'font-size:11px;color:var(--muted);margin-bottom:4px;' },
+                'Back 9 worth double? (Base back-9 bet pays 2×. New auto-presses still pay 1×.)'),
+              h('div', { class: 'toggle-group' },
+                h('div', {
+                  class: `toggle ${!entry.backDouble ? 'active' : ''}`,
+                  onclick: () => { entry.backDouble = false; save(); render(); }
+                }, 'Normal'),
+                h('div', {
+                  class: `toggle ${entry.backDouble ? 'active' : ''}`,
+                  onclick: () => { entry.backDouble = true; save(); render(); }
+                }, 'Back Doubled')
+              )
+            )
+          : null
+      ));
+    }
+  }
+
+  root.appendChild(h('div', { class: 'card' },
+    h('button', { class: 'btn gold', onclick: () => {
+      save();
+      state._indyFormatMidRoundEdit = false;
+      state.screen = 'round';
+      render();
+    } }, isMidRoundEdit ? 'Done →' : 'Start Round →')
+  ));
 }
 
 // ---------- Round play screen ----------
@@ -1338,7 +1421,17 @@ function renderRound() {
         h('h1', null, r.course.name),
         h('div', { class: 'sub' }, `${r.teamA.map(p=>p.name).join(' / ')} vs ${r.teamB.map(p=>p.name).join(' / ')}`)
       ),
-      h('div', { style: 'display:flex;gap:4px;' },
+      h('div', { style: 'display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end;' },
+        h('button', {
+          class: 'back-btn',
+          title: 'Edit individual Nassau formats per matchup',
+          style: 'font-size:12px;padding:4px 10px;',
+          onclick: () => {
+            state._indyFormatMidRoundEdit = true;
+            state.screen = 'indyFormat';
+            render();
+          }
+        }, '$ Nassau'),
         h('button', {
           class: 'back-btn',
           title: 'Edit setup (players, handicaps, tees)',
@@ -1354,8 +1447,6 @@ function renderRound() {
               gameType: r.gameType || 'scotch',
               gameType1: r.gameType1 || r.gameType || 'scotch',
               gameType2: r.gameType2 || r.gameType || 'scotch',
-              indyFormat: r.indyFormat || '3way',
-              indyBackDouble: !!r.indyBackDouble,
               isPublic: !!state.liveShareCode,
               editingRoundId: r.id,
               players: allPlayers.map(p => ({
@@ -1576,9 +1667,10 @@ function renderRound() {
 
   // Turn prompt: for each indy pairing, ask for back-9-bet choice when starting second nine
   // front-first: shows on H10 (hIdx === 9); back-first: shows on H1 (hIdx === 0)
-  // Skipped entirely when the round uses 2-down auto-press format.
+  // Only 3-Way matches need the turn prompt — auto-press matches spawn presses
+  // automatically and are filtered out inside buildIndyBackPrompts.
   const turnHoleIdx = r.startNine === 'back' ? 0 : 9;
-  if (hIdx === turnHoleIdx && r.indyFormat !== 'auto2down') {
+  if (hIdx === turnHoleIdx) {
     const prompts = buildIndyBackPrompts(r);
     if (prompts.length > 0) {
       root.appendChild(h('div', { class: 'card', style: 'border:2px solid var(--gold);' },
@@ -2077,9 +2169,10 @@ function renderSummary() {
 
   // Individual Net Nassau matches
   if (settlement.indy && settlement.indy.length > 0) {
-    const isAutoPress = r.indyFormat === 'auto2down';
-    const indyDescription = isAutoPress
-      ? `Net Nassau with 2-down auto-presses. Each segment + each spawned press pays one stake.${r.indyBackDouble ? ' Back 9 base bet is 2× (presses still 1×).' : ''}`
+    // Each pair's format may differ; show a column indicating which was used.
+    const anyAuto = settlement.indy.some(m => m.format === 'auto2down');
+    const indyDescription = anyAuto
+      ? 'Per-matchup Nassau. 3W = Front/Back/Total + turn press. AP = 2-down auto-presses (each press pays one stake).'
       : 'Net Nassau front/back/total. Flat $100 per segment (full) or $50 (half).';
     root.appendChild(h('div', { class: 'card' },
       h('h2', null, 'Individual Matches'),
@@ -2088,10 +2181,11 @@ function renderSummary() {
         h('thead', null,
           h('tr', null,
             h('th', null, 'Matchup'),
+            h('th', null, 'Fmt'),
             h('th', null, 'F'),
             h('th', null, 'B'),
             h('th', null, 'Tot'),
-            isAutoPress ? h('th', null, 'Pr') : null,
+            anyAuto ? h('th', null, 'Pr') : null,
             h('th', null, '$')
           )
         ),
@@ -2100,12 +2194,14 @@ function renderSummary() {
             const sign = (d) => d > 0 ? 'A' : d < 0 ? 'B' : '—';
             const amt = m.aAmount;
             const txt = amt === 0 ? '—' : (amt > 0 ? `+$${amt} A` : `+$${Math.abs(amt)} B`);
+            const fmtLabel = m.format === 'auto2down' ? (m.backDouble ? 'AP×' : 'AP') : '3W';
             return h('tr', null,
               h('td', { style: 'font-size:11px;' }, `${m.aName} vs ${m.bName}`),
+              h('td', { style: 'font-size:10px;color:var(--muted);' }, fmtLabel),
               h('td', { class: m.frontDiff > 0 ? 'team-a' : m.frontDiff < 0 ? 'team-b' : '' }, sign(m.frontDiff)),
               h('td', { class: m.backDiff  > 0 ? 'team-a' : m.backDiff  < 0 ? 'team-b' : '' }, sign(m.backDiff)),
               h('td', { class: m.totalDiff > 0 ? 'team-a' : m.totalDiff < 0 ? 'team-b' : '' }, sign(m.totalDiff)),
-              isAutoPress ? h('td', { style: 'font-size:11px;' }, String(m.pressCount || 0)) : null,
+              anyAuto ? h('td', { style: 'font-size:11px;' }, m.format === 'auto2down' ? String(m.pressCount || 0) : '—') : null,
               h('td', { style: 'font-size:11px;' }, txt)
             );
           })
@@ -2312,8 +2408,13 @@ function buildIndyBackPrompts(round) {
   const firstNineIdxs = round.startNine === 'back'
     ? [9,10,11,12,13,14,15,16,17]
     : [0,1,2,3,4,5,6,7,8];
+  const formats = round.indyMatchFormats || {};
   for (const pa of round.teamA) {
     for (const pb of round.teamB) {
+      const k = Scoring.indyKey(pa.id, pb.id);
+      const entry = formats[k] || { format: '3way' };
+      // Auto-press matches handle their own presses; no turn prompt needed.
+      if (entry.format === 'auto2down') continue;
       const firstNineDone = firstNineIdxs.every(i => pa.scores[i] != null && pb.scores[i] != null);
       if (!firstNineDone) continue;
       const match = Scoring.computeIndyMatch(round, pa, pb);
@@ -3578,11 +3679,27 @@ function renderLiveView() {
 }
 
 // ==================== PLAYER PICKER MODAL (round setup) ====================
+// Debounced player search. The input re-renders on every keystroke, which
+// previously killed focus — debouncing keeps the input responsive and only
+// fires the API call after the user stops typing. Focus is restored in
+// renderPlayerPickerModal after each render.
+let _playerPickerSearchTimer = null;
+let _playerPickerSearchSeq = 0;
+function schedulePlayerPickerSearch(query) {
+  state.playerPickerQuery = query || '';
+  if (_playerPickerSearchTimer) clearTimeout(_playerPickerSearchTimer);
+  _playerPickerSearchTimer = setTimeout(() => {
+    runPlayerPickerSearch(state.playerPickerQuery);
+  }, 220);
+}
 async function runPlayerPickerSearch(query) {
   state.playerPickerQuery = query || '';
   if (!SupabaseClient || !SupabaseClient.isConfigured()) return;
+  const mySeq = ++_playerPickerSearchSeq;
   // Search all users (empty query returns all)
   const results = await SupabaseClient.searchUsersByName(query || '');
+  // If a newer search has started, discard this stale result.
+  if (mySeq !== _playerPickerSearchSeq) return;
   const myId = state.authUser ? state.authUser.id : null;
   const alreadyLinked = new Set(
     (newRoundDraft?.players || []).map(p => p.userId).filter(Boolean)
@@ -3612,6 +3729,17 @@ function renderPlayerPickerModal() {
 
   const query = state.playerPickerQuery || '';
 
+  // After the modal is mounted to the DOM, restore focus and caret position
+  // so the user can keep typing without re-clicking the field on every render.
+  requestAnimationFrame(() => {
+    const inp = document.getElementById('player-picker-search');
+    if (inp && document.activeElement !== inp) {
+      inp.focus();
+      const pos = state._pickerCaret != null ? state._pickerCaret : (inp.value ? inp.value.length : 0);
+      try { inp.setSelectionRange(pos, pos); } catch (_) {}
+    }
+  });
+
   return h('div', { class: 'modal-backdrop', onclick: (e) => { if (e.target === e.currentTarget) close(); } },
     h('div', { class: 'modal-card' },
       h('div', { class: 'modal-header' },
@@ -3623,12 +3751,14 @@ function renderPlayerPickerModal() {
             h('div', { class: 'field' },
               h('label', null, 'Search by name or email'),
               h('input', {
+                id: 'player-picker-search',
                 type: 'text',
                 value: query,
                 placeholder: 'Type to filter…',
                 oninput: e => {
-                  state.playerPickerQuery = e.target.value;
-                  runPlayerPickerSearch(e.target.value);
+                  // Remember caret so focus restoration can put it back.
+                  state._pickerCaret = e.target.selectionStart;
+                  schedulePlayerPickerSearch(e.target.value);
                 }
               })
             ),

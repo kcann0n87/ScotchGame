@@ -727,17 +727,20 @@ const Scoring = (() => {
     const details = [];
     const perPlayerIndy = {};
     for (const p of [...round.teamA, ...round.teamB]) perPlayerIndy[p.id] = 0;
-    const autoPress = round.indyFormat === 'auto2down';
+    const formats = round.indyMatchFormats || {};
 
     for (const pa of round.teamA) {
       for (const pb of round.teamB) {
         const stake = lowerStake(pa, pb);
         const stakeLabel = stake.game === 125 ? '1.25×' : stake.game === 100 ? 'full' : stake.game === 75 ? '¾' : 'half';
+        const key = indyKey(pa.id, pb.id);
+        const entry = formats[key] || { format: '3way', backDouble: false };
+        const isAuto = entry.format === 'auto2down';
 
-        if (autoPress) {
+        if (isAuto) {
           const ap = computeIndyMatchAutoPress(round, pa, pb);
           const aAmt = indyAutoPressDollars(ap, stake, {
-            backDouble: !!round.indyBackDouble,
+            backDouble: !!entry.backDouble,
             startNine: round.startNine
           });
           perPlayerIndy[pa.id] += aAmt;
@@ -751,6 +754,7 @@ const Scoring = (() => {
             backDiff:  ap.backDiff,
             totalDiff: ap.totalDiff,
             format: 'auto2down',
+            backDouble: !!entry.backDouble,
             pressCount: ap.presses.length,
             pressSegments: ap.presses.map(p => ({
               startHole: p.startHole + 1,
@@ -761,7 +765,6 @@ const Scoring = (() => {
           });
         } else {
           const match = computeIndyMatch(round, pa, pb);
-          const key = indyKey(pa.id, pb.id);
           const choice = (round.indyBackChoice && round.indyBackChoice[key]) || null;
           const backMult = (choice === 'press' || choice === '3way') ? 2 : 1;
           const aAmt = indyDollars(match, stake, backMult, round.startNine);
