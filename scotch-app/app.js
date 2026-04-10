@@ -861,7 +861,7 @@ function renderNewRound() {
       ? h('div', { style: 'margin-top:12px;' },
           h('h3', { style: 'margin-bottom:4px;' }, 'Back 9 Stakes'),
           h('div', { style: 'font-size:11px;color:var(--muted);margin-bottom:6px;' },
-            'Doubles the back-9 base bet AND any presses that open on the back 9. (If you start on the back nine, doubles the second nine played instead.)'),
+            'When enabled, the back 9 base bet is worth 2× (e.g. $200 instead of $100). Any new auto-presses that spawn on the back 9 still pay the normal 1× stake. (If you start on the back nine, the second nine played is doubled instead.)'),
           h('div', { class: 'toggle-group' },
             h('div', {
               class: `toggle ${!newRoundDraft.indyBackDouble ? 'active' : ''}`,
@@ -870,7 +870,7 @@ function renderNewRound() {
             h('div', {
               class: `toggle ${newRoundDraft.indyBackDouble ? 'active' : ''}`,
               onclick: () => { newRoundDraft.indyBackDouble = true; render(); }
-            }, 'Back Doubled', h('br'), h('span', { style: 'font-size:10px;' }, 'Second nine pays 2×'))
+            }, 'Back Doubled', h('br'), h('span', { style: 'font-size:10px;' }, 'Back base = 2×, presses 1×'))
           )
         )
       : null
@@ -2079,7 +2079,7 @@ function renderSummary() {
   if (settlement.indy && settlement.indy.length > 0) {
     const isAutoPress = r.indyFormat === 'auto2down';
     const indyDescription = isAutoPress
-      ? `Net Nassau with 2-down auto-presses. Each segment + each spawned press pays one stake.${r.indyBackDouble ? ' Back 9 (and its presses) pay 2×.' : ''}`
+      ? `Net Nassau with 2-down auto-presses. Each segment + each spawned press pays one stake.${r.indyBackDouble ? ' Back 9 base bet is 2× (presses still 1×).' : ''}`
       : 'Net Nassau front/back/total. Flat $100 per segment (full) or $50 (half).';
     root.appendChild(h('div', { class: 'card' },
       h('h2', null, 'Individual Matches'),

@@ -125,24 +125,26 @@ const Scoring = (() => {
 
   // Settle an auto-press indy match into $ for player A.
   // Every segment (Front, Back, Overall) and every spawned press each pay one stake.
-  // If opts.backDouble is true, the "second nine played" base segment AND any
-  // presses that opened in that second nine pay 2×. Overall (1-18) is never
+  // If opts.backDouble is true, ONLY the "second nine played" base segment pays
+  // 2× (e.g. Back = $200). All spawned presses — even those that open on the
+  // back — still pay the normal 1× stake ($100). Overall (1-18) is never
   // doubled.
   function indyAutoPressDollars(apResult, stake, opts) {
     opts = opts || {};
     const perSeg = stake.game;
     const startBack = opts.startNine === 'back';
-    // When "back doubled" is on, the SECOND nine played gets the 2× multiplier.
+    // When "back doubled" is on, the SECOND nine played base bet gets 2×.
     // Front-first → second nine ends at hole index 17 (back). Back-first → ends at 8 (front).
     const secondNineEndHole = startBack ? 8 : 17;
-    const doubled = (seg) => opts.backDouble && seg.endHole === secondNineEndHole ? 2 : 1;
+    const baseMult = (seg) => opts.backDouble && seg.endHole === secondNineEndHole ? 2 : 1;
     const addSeg = (diff, mult) => diff > 0 ? perSeg * mult : diff < 0 ? -perSeg * mult : 0;
     let aAmt = 0;
-    aAmt += addSeg(apResult.frontMain.diff, doubled(apResult.frontMain));
-    aAmt += addSeg(apResult.backMain.diff,  doubled(apResult.backMain));
+    aAmt += addSeg(apResult.frontMain.diff, baseMult(apResult.frontMain));
+    aAmt += addSeg(apResult.backMain.diff,  baseMult(apResult.backMain));
     aAmt += addSeg(apResult.overall.diff,   1);
+    // Presses always pay 1× — the back-double only applies to the base segment.
     for (const p of apResult.presses) {
-      aAmt += addSeg(p.diff, doubled(p));
+      aAmt += addSeg(p.diff, 1);
     }
     return aAmt;
   }

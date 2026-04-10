@@ -1292,24 +1292,26 @@ const Scoring = (() => {
 
   // Settle an auto-press indy match into $ for player A.
   // Every segment (Front, Back, Overall) and every spawned press each pay one stake.
-  // If opts.backDouble is true, the "second nine played" base segment AND any
-  // presses that opened in that second nine pay 2×. Overall (1-18) is never
+  // If opts.backDouble is true, ONLY the "second nine played" base segment pays
+  // 2× (e.g. Back = $200). All spawned presses — even those that open on the
+  // back — still pay the normal 1× stake ($100). Overall (1-18) is never
   // doubled.
   function indyAutoPressDollars(apResult, stake, opts) {
     opts = opts || {};
     const perSeg = stake.game;
     const startBack = opts.startNine === 'back';
-    // When "back doubled" is on, the SECOND nine played gets the 2× multiplier.
+    // When "back doubled" is on, the SECOND nine played base bet gets 2×.
     // Front-first → second nine ends at hole index 17 (back). Back-first → ends at 8 (front).
     const secondNineEndHole = startBack ? 8 : 17;
-    const doubled = (seg) => opts.backDouble && seg.endHole === secondNineEndHole ? 2 : 1;
+    const baseMult = (seg) => opts.backDouble && seg.endHole === secondNineEndHole ? 2 : 1;
     const addSeg = (diff, mult) => diff > 0 ? perSeg * mult : diff < 0 ? -perSeg * mult : 0;
     let aAmt = 0;
-    aAmt += addSeg(apResult.frontMain.diff, doubled(apResult.frontMain));
-    aAmt += addSeg(apResult.backMain.diff,  doubled(apResult.backMain));
+    aAmt += addSeg(apResult.frontMain.diff, baseMult(apResult.frontMain));
+    aAmt += addSeg(apResult.backMain.diff,  baseMult(apResult.backMain));
     aAmt += addSeg(apResult.overall.diff,   1);
+    // Presses always pay 1× — the back-double only applies to the base segment.
     for (const p of apResult.presses) {
-      aAmt += addSeg(p.diff, doubled(p));
+      aAmt += addSeg(p.diff, 1);
     }
     return aAmt;
   }
@@ -3490,7 +3492,7 @@ function renderNewRound() {
       ? h('div', { style: 'margin-top:12px;' },
           h('h3', { style: 'margin-bottom:4px;' }, 'Back 9 Stakes'),
           h('div', { style: 'font-size:11px;color:var(--muted);margin-bottom:6px;' },
-            'Doubles the back-9 base bet AND any presses that open on the back 9. (If you start on the back nine, doubles the second nine played instead.)'),
+            'When enabled, the back 9 base bet is worth 2× (e.g. $200 instead of $100). Any new auto-presses that spawn on the back 9 still pay the normal 1× stake. (If you start on the back nine, the second nine played is doubled instead.)'),
           h('div', { class: 'toggle-group' },
             h('div', {
               class: `toggle ${!newRoundDraft.indyBackDouble ? 'active' : ''}`,
@@ -3499,7 +3501,7 @@ function renderNewRound() {
             h('div', {
               class: `toggle ${newRoundDraft.indyBackDouble ? 'active' : ''}`,
               onclick: () => { newRoundDraft.indyBackDouble = true; render(); }
-            }, 'Back Doubled', h('br'), h('span', { style: 'font-size:10px;' }, 'Second nine pays 2×'))
+            }, 'Back Doubled', h('br'), h('span', { style: 'font-size:10px;' }, 'Back base = 2×, presses 1×'))
           )
         )
       : null
@@ -4708,7 +4710,7 @@ function renderSummary() {
   if (settlement.indy && settlement.indy.length > 0) {
     const isAutoPress = r.indyFormat === 'auto2down';
     const indyDescription = isAutoPress
-      ? `Net Nassau with 2-down auto-presses. Each segment + each spawned press pays one stake.${r.indyBackDouble ? ' Back 9 (and its presses) pay 2×.' : ''}`
+      ? `Net Nassau with 2-down auto-presses. Each segment + each spawned press pays one stake.${r.indyBackDouble ? ' Back 9 base bet is 2× (presses still 1×).' : ''}`
       : 'Net Nassau front/back/total. Flat $100 per segment (full) or $50 (half).';
     root.appendChild(h('div', { class: 'card' },
       h('h2', null, 'Individual Matches'),
