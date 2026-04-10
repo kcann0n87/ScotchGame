@@ -253,7 +253,7 @@ function courseFromPreset(preset) {
 }
 
 // ---------- Round factory ----------
-function newRound(course, players, teamAIds, teamBIds, mode, playhouse, startNine, gameType, gameType1, gameType2) {
+function newRound(course, players, teamAIds, teamBIds, mode, playhouse, startNine, gameType, gameType1, gameType2, indyFormat, indyBackDouble) {
   const pars = course.holes.map(h => h.par);
   const sn = startNine === 'back' ? 'back' : 'front';
   // Clone the course so we can apply startNine swap without mutating the master course
@@ -291,6 +291,8 @@ function newRound(course, players, teamAIds, teamBIds, mode, playhouse, startNin
     gameType: gameType || 'scotch',
     gameType1: gameType1 || gameType || 'scotch',
     gameType2: gameType2 || gameType || 'scotch',
+    indyFormat: indyFormat === 'auto2down' ? 'auto2down' : '3way',
+    indyBackDouble: !!indyBackDouble,
     course: courseForRound,
     teamA,
     teamB,
@@ -488,30 +490,10 @@ function renderHome() {
               class: 'list-item',
               style: 'cursor:pointer;',
               onclick: () => {
-                // Navigate to live view
-                state.liveViewCode = g.code;
-                state.liveViewData = g.data || null;
-                state.screen = 'liveView';
-                render();
-                // Subscribe for live updates
-                if (typeof SupabaseClient !== 'undefined' && SupabaseClient.isConfigured()) {
-                  (async () => {
-                    try {
-                      state.liveViewUnsubscribe = await SupabaseClient.subscribeToLiveShare(g.code, (shareRow) => {
-                        if (shareRow && shareRow.data) {
-                          state.liveViewData = shareRow.data;
-                          render(true);
-                        }
-                      });
-                      state.liveChatMessages = [];
-                      state.liveChatHandle = SupabaseClient.subscribeLiveChat(g.code, (msg) => {
-                        state.liveChatMessages.push(msg);
-                        if (state.liveChatMessages.length > 100) state.liveChatMessages.shift();
-                        render(true);
-                      });
-                    } catch (e) { console.warn('live view subscribe failed:', e); }
-                  })();
-                }
+                // Open the live viewer in a NEW tab so users can keep their
+                // current session (e.g. an in-progress round) open alongside it.
+                const url = `${location.origin}${location.pathname}?live=${g.code}`;
+                window.open(url, '_blank', 'noopener');
               }
             },
               h('div', { style: 'flex:1;min-width:0;' },
@@ -790,6 +772,8 @@ function ensureDraft() {
       gameType: 'scotch',
       gameType1: 'scotch',
       gameType2: 'scotch',
+      indyFormat: '3way',
+      indyBackDouble: false,
       isPublic: true,
       editingRoundId: null,
       players: [
@@ -856,6 +840,42 @@ function renderNewRound() {
     )
   );
   root.appendChild(playhouseCard);
+
+  // Individual Nassau format
+  const indyFormatCard = h('div', { class: 'card' },
+    h('h2', null, 'Individual Nassau Format'),
+    h('div', { style: 'font-size:12px;color:var(--muted);margin-bottom:8px;' },
+      'How the player-vs-player Nassau side bets work. 3-Way uses the classic front/back/total with a press choice at the turn. 2-Down Auto-Presses automatically opens a new press whenever a player falls 2 strokes down within a segment.'),
+    h('div', { class: 'toggle-group' },
+      h('div', {
+        class: `toggle ${(newRoundDraft.indyFormat || '3way') === '3way' ? 'active' : ''}`,
+        onclick: () => { newRoundDraft.indyFormat = '3way'; render(); }
+      }, '3-Way', h('br'), h('span', { style: 'font-size:10px;' }, 'Front / Back / Total + turn press')),
+      h('div', {
+        class: `toggle ${newRoundDraft.indyFormat === 'auto2down' ? 'active' : ''}`,
+        onclick: () => { newRoundDraft.indyFormat = 'auto2down'; render(); }
+      }, '2-Down Auto', h('br'), h('span', { style: 'font-size:10px;' }, 'Auto-press when 2 strokes down'))
+    ),
+    // Back-9-double sub-option for auto-press mode
+    newRoundDraft.indyFormat === 'auto2down'
+      ? h('div', { style: 'margin-top:12px;' },
+          h('h3', { style: 'margin-bottom:4px;' }, 'Back 9 Stakes'),
+          h('div', { style: 'font-size:11px;color:var(--muted);margin-bottom:6px;' },
+            'Doubles the back-9 base bet AND any presses that open on the back 9. (If you start on the back nine, doubles the second nine played instead.)'),
+          h('div', { class: 'toggle-group' },
+            h('div', {
+              class: `toggle ${!newRoundDraft.indyBackDouble ? 'active' : ''}`,
+              onclick: () => { newRoundDraft.indyBackDouble = false; render(); }
+            }, 'Normal', h('br'), h('span', { style: 'font-size:10px;' }, 'All segments 1×')),
+            h('div', {
+              class: `toggle ${newRoundDraft.indyBackDouble ? 'active' : ''}`,
+              onclick: () => { newRoundDraft.indyBackDouble = true; render(); }
+            }, 'Back Doubled', h('br'), h('span', { style: 'font-size:10px;' }, 'Second nine pays 2×'))
+          )
+        )
+      : null
+  );
+  root.appendChild(indyFormatCard);
 
   // Mode selector
   const modeCard = h('div', { class: 'card' },
@@ -1188,7 +1208,9 @@ function renderNewRound() {
           newRoundDraft.startNine,
           newRoundDraft.gameType,
           newRoundDraft.gameType1,
-          newRoundDraft.gameType2
+          newRoundDraft.gameType2,
+          newRoundDraft.indyFormat,
+          newRoundDraft.indyBackDouble
         );
         // Build lookup of old player scores by id
         const oldScoresById = {};
@@ -1227,7 +1249,9 @@ function renderNewRound() {
         newRoundDraft.startNine,
         newRoundDraft.gameType,
         newRoundDraft.gameType1,
-        newRoundDraft.gameType2
+        newRoundDraft.gameType2,
+        newRoundDraft.indyFormat,
+        newRoundDraft.indyBackDouble
       );
       state.currentHoleIdx = newRoundDraft.startNine === 'back' ? 9 : 0;
       const wantPublic = !!newRoundDraft.isPublic;
@@ -1279,17 +1303,33 @@ function renderRound() {
             } catch(e) { prompt('Share this link:', url); }
             return;
           }
-          const share = await SupabaseClient.createLiveShare(r.id);
+          // Create a PUBLIC share by default so other signed-in users can
+          // discover this game in their Live Now list. Scorer can later toggle
+          // it private from the Edit Setup screen.
+          const share = await SupabaseClient.createLiveShare(r.id, true);
           if (share) {
             state.liveShareCode = share.code;
             state.liveShareUrl = `${location.origin}${location.pathname}?live=${share.code}`;
-            // Push initial state
-            await SupabaseClient.updateLiveShare(share.code, r);
+            // Push initial state + re-assert public flag in case the INSERT
+            // raced with the default.
+            await SupabaseClient.updateLiveShare(share.code, r, true);
             render();
           }
         }
       }, state.liveShareCode ? '📡 Copy Link' : '📡 Share')
     : null;
+
+  // Background-fetch public live games so we can show a Live Now strip
+  // mid-round too (lets players watch other rounds while playing).
+  if (state.authUser && typeof SupabaseClient !== 'undefined' && SupabaseClient.isConfigured() && !state._publicGamesLoading && !state._publicGamesInRoundFetched) {
+    state._publicGamesLoading = true;
+    state._publicGamesInRoundFetched = true;
+    SupabaseClient.listPublicLiveGames().then(list => {
+      state._publicGames = list || [];
+      state._publicGamesLoading = false;
+      render(true);
+    }).catch(() => { state._publicGamesLoading = false; });
+  }
 
   root.appendChild(h('div', { class: 'header' },
     h('div', { class: 'header-row' },
@@ -1302,6 +1342,7 @@ function renderRound() {
         h('button', {
           class: 'back-btn',
           title: 'Edit setup (players, handicaps, tees)',
+          style: 'font-size:12px;padding:4px 10px;',
           onclick: () => {
             // Rebuild newRoundDraft from the live round so user can edit setup
             const allPlayers = [...r.teamA, ...r.teamB];
@@ -1313,6 +1354,8 @@ function renderRound() {
               gameType: r.gameType || 'scotch',
               gameType1: r.gameType1 || r.gameType || 'scotch',
               gameType2: r.gameType2 || r.gameType || 'scotch',
+              indyFormat: r.indyFormat || '3way',
+              indyBackDouble: !!r.indyBackDouble,
               isPublic: !!state.liveShareCode,
               editingRoundId: r.id,
               players: allPlayers.map(p => ({
@@ -1330,12 +1373,54 @@ function renderRound() {
             state.screen = 'newRound';
             render();
           }
-        }, '✎'),
+        }, '✎ Edit'),
         liveBtn,
         h('button', { class: 'back-btn', onclick: () => { state.screen = 'summary'; render(); } }, 'Σ')
       )
     )
   ));
+
+  // Live Now strip — compact list of OTHER public games in progress.
+  // Tapping any opens the live viewer in a new tab so you can watch while scoring.
+  if (state.authUser && typeof SupabaseClient !== 'undefined' && SupabaseClient.isConfigured()) {
+    const otherGames = (state._publicGames || []).filter(g =>
+      !(state.liveShareCode && g.code === state.liveShareCode)
+    );
+    if (otherGames.length > 0) {
+      root.appendChild(h('div', {
+        style: 'margin:0 14px 10px;padding:8px 12px;background:var(--card);border:1px solid var(--border-light);border-radius:var(--radius);'
+      },
+        h('div', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:6px;' },
+          h('div', { style: 'font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--green);' },
+            `📡 Live Now (${otherGames.length})`),
+          h('div', { style: 'font-size:10px;color:var(--muted);' }, 'tap to watch')
+        ),
+        h('div', { style: 'display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;' },
+          ...otherGames.map(g => {
+            const d = g.data || {};
+            const teamA = d.teamA || [];
+            const teamB = d.teamB || [];
+            const namesA = teamA.map(p => (p.name || '?').split(' ')[0]).join('/') || '?';
+            const namesB = teamB.map(p => (p.name || '?').split(' ')[0]).join('/') || '?';
+            const allP = [...teamA, ...teamB];
+            let played = 0;
+            for (let i = 0; i < 18; i++) {
+              if (allP.some(p => p.scores && p.scores[i] != null)) played++;
+            }
+            return h('button', {
+              class: 'btn secondary btn-sm',
+              style: 'flex:0 0 auto;margin:0;padding:6px 10px;font-size:11px;white-space:nowrap;',
+              onclick: () => {
+                // Open live view in a NEW tab so the scorer's round stays put.
+                const url = `${location.origin}${location.pathname}?live=${g.code}`;
+                window.open(url, '_blank', 'noopener');
+              }
+            }, `${namesA} v ${namesB} · H${Math.min(played + 1, 18)}`);
+          })
+        )
+      ));
+    }
+  }
 
   // Compute running tallies
   const playOrder = (r.startNine === 'back'
@@ -1394,11 +1479,39 @@ function renderRound() {
     : sumGameHoles(result.bottom, holesThrough);
 
   const tally = teamLabels(r);
-  function tallyStr(t) { return t.a === t.b ? 'Even' : t.a > t.b ? `${tally.a} +${t.a-t.b}` : `${tally.b} +${t.b-t.a}`; }
-  function tallyClr(t) { return t.a > t.b ? 'var(--team-a)' : t.b > t.a ? 'var(--team-b)' : 'rgba(255,255,255,0.7)'; }
+  // Determine the SCORER'S team (the app user). All games in the hole header
+  // are displayed from this perspective: positive = scorer's team is winning.
+  // Falls back to team A if the user isn't actually a player in the round.
+  const scorerUserId = state.authUser ? state.authUser.id : null;
+  const scorerPlayer = scorerUserId
+    ? [...r.teamA, ...r.teamB].find(p => p.userId === scorerUserId)
+    : null;
+  const scorerTeam = scorerPlayer ? scorerPlayer.team : 'A';
+  const scorerFlip = scorerTeam === 'B';
 
-  // Build slash-separated press tally for top/bottom games
-  // Only shows segments for the CURRENT nine (front or back based on current hole)
+  // Middle tally from scorer's perspective: positive value when scorer's team is up.
+  function tallyStr(t) {
+    if (t.a === t.b) return 'Even';
+    const myPts = scorerFlip ? t.b : t.a;
+    const theirPts = scorerFlip ? t.a : t.b;
+    const myName = scorerFlip ? tally.b : tally.a;
+    const theirName = scorerFlip ? tally.a : tally.b;
+    return myPts > theirPts
+      ? `${myName} +${myPts - theirPts}`
+      : `${theirName} +${theirPts - myPts}`;
+  }
+  function tallyClr(t) {
+    // Use scorer's team color when they're winning, opponent's when losing.
+    const myPts = scorerFlip ? t.b : t.a;
+    const theirPts = scorerFlip ? t.a : t.b;
+    if (myPts === theirPts) return 'rgba(255,255,255,0.7)';
+    return myPts > theirPts
+      ? (scorerFlip ? 'var(--team-b)' : 'var(--team-a)')
+      : (scorerFlip ? 'var(--team-a)' : 'var(--team-b)');
+  }
+
+  // Build slash-separated press tally for top/bottom games from SCORER'S perspective.
+  // Only shows segments for the CURRENT nine (front or back based on current hole).
   function pressSlashStr(game, holes) {
     const currentNineEnd = hIdx <= 8 ? 8 : 17;
     const segs = [
@@ -1410,7 +1523,8 @@ function renderRound() {
       let a = 0, b = 0;
       for (const p of seg.points) { if (holes.includes(p.h)) { a += p.a; b += p.b; } }
       if (seg.points.filter(p => holes.includes(p.h)).length === 0) continue;
-      const diff = a - b;
+      // Flip so positive = scorer's team is winning the segment.
+      const diff = scorerFlip ? (b - a) : (a - b);
       parts.push(diff === 0 ? 'E' : diff > 0 ? `+${diff}` : `${diff}`);
     }
     return parts.length === 0 ? 'Even' : parts.join('/');
@@ -1422,6 +1536,8 @@ function renderRound() {
     if (mainSeg) {
       for (const p of mainSeg.points) { if (holes.includes(p.h)) { a += p.a; b += p.b; } }
     }
+    // Color reflects who's ACTUALLY leading (team colors stay consistent), not the
+    // scorer's perspective — so visual cue still matches team identity.
     return a > b ? 'var(--team-a)' : b > a ? 'var(--team-b)' : 'var(--muted)';
   }
 
@@ -1460,8 +1576,9 @@ function renderRound() {
 
   // Turn prompt: for each indy pairing, ask for back-9-bet choice when starting second nine
   // front-first: shows on H10 (hIdx === 9); back-first: shows on H1 (hIdx === 0)
+  // Skipped entirely when the round uses 2-down auto-press format.
   const turnHoleIdx = r.startNine === 'back' ? 0 : 9;
-  if (hIdx === turnHoleIdx) {
+  if (hIdx === turnHoleIdx && r.indyFormat !== 'auto2down') {
     const prompts = buildIndyBackPrompts(r);
     if (prompts.length > 0) {
       root.appendChild(h('div', { class: 'card', style: 'border:2px solid var(--gold);' },
@@ -1675,9 +1792,12 @@ function renderRound() {
 
     // In 5-man, show only the 2 players actually in this sub-game
     const tl = g.subRound ? teamLabels(g.subRound) : teamLabels(r);
-    // Only show the winning team's points (or "Tied" if even)
+    // Only show the winning team's NET points (what they actually earn in the middle
+    // game for this hole = winner.points − loser.points). Previously this showed
+    // hp.a or hp.b (raw pre-subtraction total), which double-counted vs. the running
+    // summary and confused users after Keep/Take + Roll/Playhouse multipliers.
     const winnerName = winner === 'A' ? tl.a : winner === 'B' ? tl.b : null;
-    const winnerPts = winner === 'A' ? hp.a : winner === 'B' ? hp.b : 0;
+    const winnerPts = Math.abs(hp.a - hp.b);
     const winnerColor = winner === 'A' ? 'var(--team-a)' : winner === 'B' ? 'var(--team-b)' : 'var(--muted)';
 
     root.appendChild(h('div', { class: 'card' },
@@ -1957,10 +2077,13 @@ function renderSummary() {
 
   // Individual Net Nassau matches
   if (settlement.indy && settlement.indy.length > 0) {
+    const isAutoPress = r.indyFormat === 'auto2down';
+    const indyDescription = isAutoPress
+      ? `Net Nassau with 2-down auto-presses. Each segment + each spawned press pays one stake.${r.indyBackDouble ? ' Back 9 (and its presses) pay 2×.' : ''}`
+      : 'Net Nassau front/back/total. Flat $100 per segment (full) or $50 (half).';
     root.appendChild(h('div', { class: 'card' },
       h('h2', null, 'Individual Matches'),
-      h('div', { style: 'font-size:12px;color:var(--muted);margin-bottom:8px;' },
-        'Net Nassau front/back/total. Flat $100 per segment (full) or $50 (half). No presses.'),
+      h('div', { style: 'font-size:12px;color:var(--muted);margin-bottom:8px;' }, indyDescription),
       h('table', { class: 'totals-table' },
         h('thead', null,
           h('tr', null,
@@ -1968,6 +2091,7 @@ function renderSummary() {
             h('th', null, 'F'),
             h('th', null, 'B'),
             h('th', null, 'Tot'),
+            isAutoPress ? h('th', null, 'Pr') : null,
             h('th', null, '$')
           )
         ),
@@ -1981,6 +2105,7 @@ function renderSummary() {
               h('td', { class: m.frontDiff > 0 ? 'team-a' : m.frontDiff < 0 ? 'team-b' : '' }, sign(m.frontDiff)),
               h('td', { class: m.backDiff  > 0 ? 'team-a' : m.backDiff  < 0 ? 'team-b' : '' }, sign(m.backDiff)),
               h('td', { class: m.totalDiff > 0 ? 'team-a' : m.totalDiff < 0 ? 'team-b' : '' }, sign(m.totalDiff)),
+              isAutoPress ? h('td', { style: 'font-size:11px;' }, String(m.pressCount || 0)) : null,
               h('td', { style: 'font-size:11px;' }, txt)
             );
           })
@@ -3176,31 +3301,52 @@ function renderLiveView() {
     : `${tlFull.b} +${midTally.b - midTally.a}`;
   const midClr = midTally.a > midTally.b ? 'var(--team-a)' : midTally.b > midTally.a ? 'var(--team-b)' : 'var(--muted)';
 
-  // Top/Bottom press slash tally
-  function liveSlashStr(game) {
-    const segs = [...game.segments.filter(s => s.name !== 'Overall'), ...game.presses];
+  // Top/Bottom press slash tally — shown from the LEADER'S perspective.
+  // The leader is whichever team is up in the main segment of the currently
+  // active nine (i.e., the nine containing the most recent played hole).
+  // Values are flipped so that the leader always sees positive numbers first.
+  const latestPlayed = playedHoleSet.length ? playedHoleSet[playedHoleSet.length - 1] : 0;
+  const activeNineEnd = latestPlayed <= 8 ? 8 : 17;
+
+  function liveGameView(game) {
+    // Only show segments/presses for the currently active nine.
+    const segs = [
+      ...game.segments.filter(s => s.name !== 'Overall' && s.endHole === activeNineEnd),
+      ...game.presses.filter(p => p.endHole === activeNineEnd)
+    ];
+    const mainSeg = segs[0]; // front or back main
+    // Main-segment leader determines the perspective for the whole card.
+    let ma = 0, mb = 0;
+    if (mainSeg) {
+      for (const p of mainSeg.points) { if (playedHoleSet.includes(p.h)) { ma += p.a; mb += p.b; } }
+    }
+    // Flip = true when team B leads the main (so we flip all values to B's perspective).
+    const flip = mb > ma;
+    const leaderTeam = ma > mb ? 'A' : mb > ma ? 'B' : null;
+    const leaderName = leaderTeam === 'A' ? tl.a : leaderTeam === 'B' ? tl.b : null;
     const parts = [];
     for (const seg of segs) {
       let a = 0, b = 0;
       for (const p of seg.points) { if (playedHoleSet.includes(p.h)) { a += p.a; b += p.b; } }
       if (seg.points.filter(p => playedHoleSet.includes(p.h)).length === 0) continue;
-      const diff = a - b;
+      const diff = flip ? (b - a) : (a - b);
       parts.push(diff === 0 ? 'E' : diff > 0 ? `+${diff}` : `${diff}`);
     }
-    return parts.length === 0 ? 'Even' : parts.join('/');
+    const color = leaderTeam === 'A' ? 'var(--team-a)'
+                : leaderTeam === 'B' ? 'var(--team-b)'
+                : 'var(--muted)';
+    return {
+      str: parts.length === 0 ? 'Even' : parts.join('/'),
+      leaderName,
+      color
+    };
   }
-  function liveSlashClr(game) {
-    const front = game.segments.find(s => s.name === 'Front');
-    const back = game.segments.find(s => s.name === 'Back');
-    let a = 0, b = 0;
-    for (const seg of [front, back]) {
-      if (!seg) continue;
-      for (const p of seg.points) { if (playedHoleSet.includes(p.h)) { a += p.a; b += p.b; } }
-    }
-    return a > b ? 'var(--team-a)' : b > a ? 'var(--team-b)' : 'var(--muted)';
-  }
+  function liveSlashStr(game) { return liveGameView(game).str; }
+  function liveSlashClr(game) { return liveGameView(game).color; }
   const topGame = result.mode === '5man' ? result.game1.top : result.top;
   const botGame = result.mode === '5man' ? result.game1.bottom : result.bottom;
+  const topView = liveGameView(topGame);
+  const botView = liveGameView(botGame);
 
   // Banner with course name and middle game score
   root.appendChild(h('div', { class: 'result-banner' },
@@ -3208,19 +3354,26 @@ function renderLiveView() {
     h('div', { class: 'amount' }, midStr)
   ));
 
-  // Game tallies card
-  root.appendChild(h('div', { style: 'display:flex;justify-content:space-around;padding:12px 14px;margin:0 14px 14px;background:var(--card);border-radius:var(--radius);border:1px solid var(--border-light);font-size:14px;font-weight:700;' },
-    h('div', { style: 'text-align:center;' },
+  // Game tallies card — each column shows the leader's name (of the current nine)
+  // and values from their perspective.
+  root.appendChild(h('div', { style: 'display:flex;justify-content:space-around;padding:12px 14px;margin:0 14px 14px;background:var(--card);border-radius:var(--radius);border:1px solid var(--border-light);font-size:14px;font-weight:700;gap:8px;' },
+    h('div', { style: 'text-align:center;flex:1;min-width:0;' },
       h('div', { style: 'font-size:10px;text-transform:uppercase;color:var(--muted);letter-spacing:1px;' }, 'Top'),
-      h('div', { style: `color:${liveSlashClr(topGame)};` }, liveSlashStr(topGame))
+      topView.leaderName
+        ? h('div', { style: `font-size:10px;color:${topView.color};font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;` }, topView.leaderName)
+        : null,
+      h('div', { style: `color:${topView.color};` }, topView.str)
     ),
-    h('div', { style: 'text-align:center;' },
+    h('div', { style: 'text-align:center;flex:1;min-width:0;' },
       h('div', { style: 'font-size:10px;text-transform:uppercase;color:var(--muted);letter-spacing:1px;' }, 'Middle'),
       h('div', { style: `color:${midClr};` }, midStr)
     ),
-    h('div', { style: 'text-align:center;' },
+    h('div', { style: 'text-align:center;flex:1;min-width:0;' },
       h('div', { style: 'font-size:10px;text-transform:uppercase;color:var(--muted);letter-spacing:1px;' }, 'Bottom'),
-      h('div', { style: `color:${liveSlashClr(botGame)};` }, liveSlashStr(botGame))
+      botView.leaderName
+        ? h('div', { style: `font-size:10px;color:${botView.color};font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;` }, botView.leaderName)
+        : null,
+      h('div', { style: `color:${botView.color};` }, botView.str)
     )
   ));
 

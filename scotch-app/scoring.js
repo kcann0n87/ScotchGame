@@ -51,6 +51,102 @@ const Scoring = (() => {
     };
   }
 
+  // ---------- 2-Down Auto-Press Individual Nassau ----------
+  // Same base structure as the 3-way Nassau (Front + Back + Total) but whenever a
+  // player falls 2 strokes DOWN within the current chain of a segment, an extra
+  // press automatically opens from the next hole to the end of that segment. Each
+  // press is worth one stake. Only the most recently opened press in a segment can
+  // spawn another, and a chained press only fires when the deficit continues in
+  // the same direction as its parent (prevents oscillation spam).
+  function computeIndyMatchAutoPress(round, playerA, playerB) {
+    const strokesA = round.baseStrokes[playerA.id] || 0;
+    const strokesB = round.baseStrokes[playerB.id] || 0;
+
+    // Per-hole diff: netB - netA  (positive = A ahead on this hole)
+    const holeDiffs = [];
+    for (let h = 0; h < 18; h++) {
+      const gA = playerA.scores[h];
+      const gB = playerB.scores[h];
+      if (gA == null || gB == null) { holeDiffs.push(null); continue; }
+      const netA = gA - strokesOnHole(strokesA, playerSI(round, playerA, h));
+      const netB = gB - strokesOnHole(strokesB, playerSI(round, playerB, h));
+      holeDiffs.push(netB - netA);
+    }
+
+    const frontMain = { startHole: 0, endHole: 8,  name: 'Front',   diff: 0, spawned: false };
+    const backMain  = { startHole: 9, endHole: 17, name: 'Back',    diff: 0, spawned: false };
+    const overall   = { startHole: 0, endHole: 17, name: 'Overall', diff: 0 };
+    const presses = [];
+
+    for (let h = 0; h < 18; h++) {
+      const d = holeDiffs[h];
+      if (d == null) continue;
+
+      const nineMain = h <= 8 ? frontMain : backMain;
+      const active = [nineMain, overall];
+      for (const p of presses) {
+        if (h >= p.startHole && h <= p.endHole) active.push(p);
+      }
+      for (const seg of active) seg.diff += d;
+
+      // Chain press: only the most recent press in this nine can spawn another
+      const pressesInNine = presses.filter(p => p.endHole === nineMain.endHole);
+      const trigger = pressesInNine.length > 0
+        ? pressesInNine[pressesInNine.length - 1]
+        : nineMain;
+
+      if (!trigger.spawned && h < trigger.endHole) {
+        const meets = trigger.chainSign
+          ? (trigger.chainSign > 0 ? trigger.diff >= 2 : trigger.diff <= -2)
+          : Math.abs(trigger.diff) >= 2;
+        if (meets) {
+          trigger.spawned = true;
+          const dir = trigger.chainSign || (trigger.diff > 0 ? 1 : -1);
+          presses.push({
+            startHole: h + 1,
+            endHole: trigger.endHole,
+            name: `Press @${h + 2}`,
+            diff: 0,
+            spawned: false,
+            chainSign: dir
+          });
+        }
+      }
+    }
+
+    return {
+      frontMain, backMain, overall, presses,
+      // Parity with computeIndyMatch for UI display of the base 3 bets
+      frontDiff: frontMain.diff,
+      backDiff:  backMain.diff,
+      totalDiff: overall.diff
+    };
+  }
+
+  // Settle an auto-press indy match into $ for player A.
+  // Every segment (Front, Back, Overall) and every spawned press each pay one stake.
+  // If opts.backDouble is true, the "second nine played" base segment AND any
+  // presses that opened in that second nine pay 2×. Overall (1-18) is never
+  // doubled.
+  function indyAutoPressDollars(apResult, stake, opts) {
+    opts = opts || {};
+    const perSeg = stake.game;
+    const startBack = opts.startNine === 'back';
+    // When "back doubled" is on, the SECOND nine played gets the 2× multiplier.
+    // Front-first → second nine ends at hole index 17 (back). Back-first → ends at 8 (front).
+    const secondNineEndHole = startBack ? 8 : 17;
+    const doubled = (seg) => opts.backDouble && seg.endHole === secondNineEndHole ? 2 : 1;
+    const addSeg = (diff, mult) => diff > 0 ? perSeg * mult : diff < 0 ? -perSeg * mult : 0;
+    let aAmt = 0;
+    aAmt += addSeg(apResult.frontMain.diff, doubled(apResult.frontMain));
+    aAmt += addSeg(apResult.backMain.diff,  doubled(apResult.backMain));
+    aAmt += addSeg(apResult.overall.diff,   1);
+    for (const p of apResult.presses) {
+      aAmt += addSeg(p.diff, doubled(p));
+    }
+    return aAmt;
+  }
+
   // Settle one indy match into $ for player A (negative = A lost)
   // backMult: 1 (default) or 2 (press when trailing, or 3-way when tied on first nine)
   // The multiplier applies to the SECOND nine played. If starting front, that's back 9.
@@ -311,8 +407,11 @@ const Scoring = (() => {
 
   // ---------- Top game: Low + Total match play with 4-down presses ----------
   // Each hole: team wins low (1 pt), wins total (1 pt).
-  // Press rule: each segment can spawn ONE press (when it crosses ≥4 down).
-  // After that, only the newly opened press can spawn the next one if IT crosses 4-down.
+  // Press rule: each segment can spawn ONE press (when the trailing team goes ≥4 down).
+  // After that, the newly opened press can spawn the next one, BUT only in the same
+  // direction as the parent chain (the team that was trailing in the main must still
+  // be trailing in the chained press by ≥4). This prevents spurious presses when the
+  // score oscillates back and forth across a big lead.
   function computeTopGame(round) {
     const frontMain = { startHole: 0, endHole: 8, name: 'Front', points: [], spawned: false };
     const backMain  = { startHole: 9, endHole: 17, name: 'Back',  points: [], spawned: false };
@@ -349,14 +448,23 @@ const Scoring = (() => {
 
       if (!trigger.spawned && h < trigger.endHole) {
         const d = segTotal(trigger);
-        if (Math.abs(d.a - d.b) >= 4) {
+        const diff = d.a - d.b;
+        // Main segment: either team's lead of ≥4 triggers the first press.
+        // Chained press: only spawn when the diff continues in the SAME direction
+        // as the original lead (the trailing team is falling further behind).
+        const meets = trigger.chainSign
+          ? (trigger.chainSign > 0 ? diff >= 4 : diff <= -4)
+          : Math.abs(diff) >= 4;
+        if (meets) {
           trigger.spawned = true;
+          const dir = trigger.chainSign || (diff > 0 ? 1 : -1);
           presses.push({
             startHole: h + 1,
             endHole: trigger.endHole,
             name: `Press @${h+2}`,
             points: [],
-            spawned: false
+            spawned: false,
+            chainSign: dir
           });
         }
       }
@@ -397,7 +505,9 @@ const Scoring = (() => {
         seg.points.push({ h, a: aPts, b: bPts });
       }
 
-      // Chained press: only the most recent press in this nine can spawn another
+      // Chained press: only the most recent press in this nine can spawn another.
+      // A chained press only fires when the diff continues in the SAME direction as
+      // the parent chain (prevents spurious spawns from oscillation).
       const nineMain = h <= 8 ? frontMain : backMain;
       const pressesInNine = presses.filter(p => p.endHole === nineMain.endHole);
       const trigger = pressesInNine.length > 0
@@ -406,14 +516,20 @@ const Scoring = (() => {
 
       if (!trigger.spawned && h < trigger.endHole) {
         const d = segTotal(trigger);
-        if (Math.abs(d.a - d.b) >= 2) {
+        const diff = d.a - d.b;
+        const meets = trigger.chainSign
+          ? (trigger.chainSign > 0 ? diff >= 2 : diff <= -2)
+          : Math.abs(diff) >= 2;
+        if (meets) {
           trigger.spawned = true;
+          const dir = trigger.chainSign || (diff > 0 ? 1 : -1);
           presses.push({
             startHole: h + 1,
             endHole: trigger.endHole,
             name: `Press @${h+2}`,
             points: [],
-            spawned: false
+            spawned: false,
+            chainSign: dir
           });
         }
       }
@@ -623,29 +739,60 @@ const Scoring = (() => {
     const details = [];
     const perPlayerIndy = {};
     for (const p of [...round.teamA, ...round.teamB]) perPlayerIndy[p.id] = 0;
+    const autoPress = round.indyFormat === 'auto2down';
 
     for (const pa of round.teamA) {
       for (const pb of round.teamB) {
-        const match = computeIndyMatch(round, pa, pb);
         const stake = lowerStake(pa, pb);
-        const key = indyKey(pa.id, pb.id);
-        const choice = (round.indyBackChoice && round.indyBackChoice[key]) || null;
-        const backMult = (choice === 'press' || choice === '3way') ? 2 : 1;
-        const aAmt = indyDollars(match, stake, backMult, round.startNine);
-        perPlayerIndy[pa.id] += aAmt;
-        perPlayerIndy[pb.id] -= aAmt;
-        details.push({
-          aId: pa.id, aName: pa.name,
-          bId: pb.id, bName: pb.name,
-          stake: stake.game === 125 ? '1.25×' : stake.game === 100 ? 'full' : stake.game === 75 ? '¾' : 'half',
-          perSeg: stake.game,
-          frontDiff: match.frontDiff,
-          backDiff:  match.backDiff,
-          totalDiff: match.totalDiff,
-          backMult,
-          choice,
-          aAmount: aAmt
-        });
+        const stakeLabel = stake.game === 125 ? '1.25×' : stake.game === 100 ? 'full' : stake.game === 75 ? '¾' : 'half';
+
+        if (autoPress) {
+          const ap = computeIndyMatchAutoPress(round, pa, pb);
+          const aAmt = indyAutoPressDollars(ap, stake, {
+            backDouble: !!round.indyBackDouble,
+            startNine: round.startNine
+          });
+          perPlayerIndy[pa.id] += aAmt;
+          perPlayerIndy[pb.id] -= aAmt;
+          details.push({
+            aId: pa.id, aName: pa.name,
+            bId: pb.id, bName: pb.name,
+            stake: stakeLabel,
+            perSeg: stake.game,
+            frontDiff: ap.frontDiff,
+            backDiff:  ap.backDiff,
+            totalDiff: ap.totalDiff,
+            format: 'auto2down',
+            pressCount: ap.presses.length,
+            pressSegments: ap.presses.map(p => ({
+              startHole: p.startHole + 1,
+              endHole:   p.endHole + 1,
+              diff:      p.diff
+            })),
+            aAmount: aAmt
+          });
+        } else {
+          const match = computeIndyMatch(round, pa, pb);
+          const key = indyKey(pa.id, pb.id);
+          const choice = (round.indyBackChoice && round.indyBackChoice[key]) || null;
+          const backMult = (choice === 'press' || choice === '3way') ? 2 : 1;
+          const aAmt = indyDollars(match, stake, backMult, round.startNine);
+          perPlayerIndy[pa.id] += aAmt;
+          perPlayerIndy[pb.id] -= aAmt;
+          details.push({
+            aId: pa.id, aName: pa.name,
+            bId: pb.id, bName: pb.name,
+            stake: stakeLabel,
+            perSeg: stake.game,
+            frontDiff: match.frontDiff,
+            backDiff:  match.backDiff,
+            totalDiff: match.totalDiff,
+            backMult,
+            choice,
+            format: '3way',
+            aAmount: aAmt
+          });
+        }
       }
     }
     return { details, perPlayerIndy };
