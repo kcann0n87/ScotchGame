@@ -19,6 +19,22 @@ const Scoring = (() => {
     return gross - strokes;
   }
 
+  // ---------- Net Double Bogey cap ----------
+  // USGA rule: the maximum gross score for scoring purposes is net double bogey
+  // — par + 2 + handicap strokes received on that hole. Anything above the cap
+  // gets adjusted down. We use this cap everywhere scores feed the game
+  // (middle / top / bottom / indy matches) and also when we report the player's
+  // gross totals so the reported number always matches what the bet used.
+  function cappedGross(round, player, holeIdx) {
+    const g = player.scores[holeIdx];
+    if (g == null || g === '') return null;
+    const par = round.course.holes[holeIdx].par;
+    const si  = playerSI(round, player, holeIdx);
+    const strokes = strokesOnHole(round.baseStrokes[player.id] || 0, si);
+    const cap = par + 2 + strokes;
+    return Math.min(g, cap);
+  }
+
   // ---------- Individual Net Nassau (front/back/total) ----------
   // Each pair of opponents plays a flat 3-segment Nassau. No presses.
   // Diff is positive when player A is ahead (lower net is better).
@@ -34,8 +50,8 @@ const Scoring = (() => {
     let frontA = 0, frontB = 0, backA = 0, backB = 0;
     let anyFront = false, anyBack = false;
     for (let h = 0; h < 18; h++) {
-      const gA = playerA.scores[h];
-      const gB = playerB.scores[h];
+      const gA = cappedGross(round, playerA, h);
+      const gB = cappedGross(round, playerB, h);
       if (gA == null || gB == null) continue;
       const netA = gA - strokesOnHole(strokesA, playerSI(round, playerA, h));
       const netB = gB - strokesOnHole(strokesB, playerSI(round, playerB, h));
@@ -65,8 +81,8 @@ const Scoring = (() => {
     // Per-hole diff: netB - netA  (positive = A ahead on this hole)
     const holeDiffs = [];
     for (let h = 0; h < 18; h++) {
-      const gA = playerA.scores[h];
-      const gB = playerB.scores[h];
+      const gA = cappedGross(round, playerA, h);
+      const gB = cappedGross(round, playerB, h);
       if (gA == null || gB == null) { holeDiffs.push(null); continue; }
       const netA = gA - strokesOnHole(strokesA, playerSI(round, playerA, h));
       const netB = gB - strokesOnHole(strokesB, playerSI(round, playerB, h));
@@ -168,9 +184,12 @@ const Scoring = (() => {
   }
 
   // ---------- Team best ball / total net ----------
+  // Both helpers accept an optional `round` argument so they can apply the
+  // net-double-bogey cap via cappedGross. If round is omitted (legacy callers),
+  // the raw gross is used — but all internal callers now pass it.
   function teamLowNet(teamPlayers, holeIdx, course, baseStrokes, round) {
     const nets = teamPlayers.map(p => {
-      const g = p.scores[holeIdx];
+      const g = round ? cappedGross(round, p, holeIdx) : p.scores[holeIdx];
       if (g == null) return null;
       const si = (p.siArray && p.siArray[holeIdx] != null) ? p.siArray[holeIdx] : course.holes[holeIdx].si;
       return netScore(g, strokesOnHole(baseStrokes[p.id], si));
@@ -181,7 +200,7 @@ const Scoring = (() => {
 
   function teamTotalNet(teamPlayers, holeIdx, course, baseStrokes, round) {
     const nets = teamPlayers.map(p => {
-      const g = p.scores[holeIdx];
+      const g = round ? cappedGross(round, p, holeIdx) : p.scores[holeIdx];
       if (g == null) return null;
       const si = (p.siArray && p.siArray[holeIdx] != null) ? p.siArray[holeIdx] : course.holes[holeIdx].si;
       return netScore(g, strokesOnHole(baseStrokes[p.id], si));
@@ -192,16 +211,16 @@ const Scoring = (() => {
 
   // Returns 'A', 'B', or 'T'
   function compareLow(round, holeIdx) {
-    const aLow = teamLowNet(round.teamA, holeIdx, round.course, round.baseStrokes);
-    const bLow = teamLowNet(round.teamB, holeIdx, round.course, round.baseStrokes);
+    const aLow = teamLowNet(round.teamA, holeIdx, round.course, round.baseStrokes, round);
+    const bLow = teamLowNet(round.teamB, holeIdx, round.course, round.baseStrokes, round);
     if (aLow == null || bLow == null) return null;
     if (aLow < bLow) return 'A';
     if (bLow < aLow) return 'B';
     return 'T';
   }
   function compareTotal(round, holeIdx) {
-    const aTot = teamTotalNet(round.teamA, holeIdx, round.course, round.baseStrokes);
-    const bTot = teamTotalNet(round.teamB, holeIdx, round.course, round.baseStrokes);
+    const aTot = teamTotalNet(round.teamA, holeIdx, round.course, round.baseStrokes, round);
+    const bTot = teamTotalNet(round.teamB, holeIdx, round.course, round.baseStrokes, round);
     if (aTot == null || bTot == null) return null;
     if (aTot < bTot) return 'A';
     if (bTot < aTot) return 'B';
@@ -209,6 +228,11 @@ const Scoring = (() => {
   }
 
   // ---------- Birdie detection ----------
+  // Birdie detection uses RAW score on purpose: an actual par-minus-1 hit
+  // earns the birdie even if the cap would have brought someone else's score
+  // down. (In practice, the cap only lowers already-high scores, so raw or
+  // capped give the same answer for birdie logic — we keep raw to make intent
+  // obvious.)
   function teamHasBirdie(teamPlayers, holeIdx, course) {
     const par = course.holes[holeIdx].par;
     return teamPlayers.some(p => p.scores[holeIdx] != null && p.scores[holeIdx] <= par - 1);
@@ -216,16 +240,18 @@ const Scoring = (() => {
 
   // Highest gross score on a team for a hole (used in 9-point high-ball scoring).
   // The team with the LARGER high score LOSES the high-ball point (other team gets 3).
-  function teamHighGross(teamPlayers, holeIdx) {
+  // The net-double-bogey cap applies here too — a hack-out 10 is treated as
+  // par + 2 + strokes, which is the reported score.
+  function teamHighGross(teamPlayers, holeIdx, round) {
     const scores = teamPlayers
-      .map(p => p.scores[holeIdx])
+      .map(p => round ? cappedGross(round, p, holeIdx) : p.scores[holeIdx])
       .filter(s => s != null);
     if (scores.length === 0) return null;
     return Math.max(...scores);
   }
   function compareHighBall(round, holeIdx) {
-    const aHi = teamHighGross(round.teamA, holeIdx);
-    const bHi = teamHighGross(round.teamB, holeIdx);
+    const aHi = teamHighGross(round.teamA, holeIdx, round);
+    const bHi = teamHighGross(round.teamB, holeIdx, round);
     if (aHi == null || bHi == null) return null;
     // LOWER max is better — team with higher max loses high ball
     if (aHi < bHi) return 'A'; // A wins (B had higher)
@@ -894,6 +920,7 @@ const Scoring = (() => {
   return {
     strokesOnHole,
     computeBaseStrokes,
+    cappedGross,
     computeRound,
     computeIndyMatch,
     indyKey,

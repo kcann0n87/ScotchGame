@@ -2228,8 +2228,15 @@ function renderSummary() {
   }
 
   // Player scores card (gross + net totals for each player)
+  // Gross reported here is the CAPPED gross (net-double-bogey rule). Any hole
+  // where the raw score exceeded par+2+strokes is shown at the cap value —
+  // which matches what the bet scoring actually used. We also surface how
+  // many holes (and how many total strokes) were adjusted down so the player
+  // can see the raw vs reported difference at a glance.
   root.appendChild(h('div', { class: 'card' },
     h('h2', null, 'Player Scores'),
+    h('div', { style: 'font-size:11px;color:var(--muted);margin-bottom:6px;' },
+      'Gross is capped at Net Double Bogey (par + 2 + strokes received). Any hole above the cap is adjusted down.'),
     h('table', { class: 'totals-table' },
       h('thead', null,
         h('tr', null,
@@ -2241,20 +2248,31 @@ function renderSummary() {
       ),
       h('tbody', null,
         ...allPlayers.map(p => {
-          const scored = p.scores.filter(s => s != null);
-          const gross = scored.reduce((a, b) => a + b, 0);
+          let gross = 0;
           let netTotal = 0;
+          let adjHoles = 0;
+          let adjStrokes = 0;
           for (let i = 0; i < 18; i++) {
             if (p.scores[i] == null) continue;
+            const cap = Scoring.cappedGross(r, p, i);
+            const raw = p.scores[i];
+            if (cap < raw) { adjHoles++; adjStrokes += (raw - cap); }
+            gross += cap;
             const si = r.course.holes[i].si;
-            netTotal += p.scores[i] - Scoring.strokesOnHole(r.baseStrokes[p.id] || 0, si);
+            netTotal += cap - Scoring.strokesOnHole(r.baseStrokes[p.id] || 0, si);
           }
           const amt = adjustedPerPlayer[p.id] || 0;
           const cls = amt > 0 ? 'team-a' : amt < 0 ? 'team-b' : '';
           const txt = amt === 0 ? '$0' : (amt > 0 ? `+$${amt}` : `−$${Math.abs(amt)}`);
+          const grossCell = adjHoles > 0
+            ? h('td', null,
+                String(gross),
+                h('span', { style: 'font-size:10px;color:var(--muted);margin-left:4px;' },
+                  `(−${adjStrokes} cap)`))
+            : h('td', null, String(gross));
           return h('tr', null,
             h('td', { style: 'font-weight:600;font-size:13px;' }, p.name),
-            h('td', null, String(gross)),
+            grossCell,
             h('td', null, String(netTotal)),
             h('td', { class: cls, style: 'font-weight:700;' }, txt)
           );
@@ -2337,7 +2355,13 @@ function buildCopyText(round, result, settlement, adjustedPerPlayer) {
   lines.push('SCORES:');
   const allPlayers = [...round.teamA, ...round.teamB];
   for (const p of allPlayers) {
-    const gross = p.scores.reduce((a, b) => a + (b || 0), 0);
+    // Report capped gross (net-double-bogey) so the reported number matches
+    // whatever the bet scoring used.
+    let gross = 0;
+    for (let i = 0; i < 18; i++) {
+      if (p.scores[i] == null) continue;
+      gross += Scoring.cappedGross(round, p, i);
+    }
     const amt = adjustedPerPlayer[p.id] || 0;
     const amtStr = amt === 0 ? 'Even' : (amt > 0 ? `+$${amt}` : `−$${Math.abs(amt)}`);
     const teeName = p.teesName || p.tees || '';
@@ -3538,7 +3562,12 @@ function renderLiveView() {
     ...allPlayers.map(p => {
       const amt = settlement.perPlayer?.[p.id] || 0;
       const scored = p.scores.filter(s => s != null);
-      const gross = scored.reduce((a, b) => a + b, 0);
+      // Report capped gross (net-double-bogey) — matches the bet scoring.
+      let gross = 0;
+      for (let i = 0; i < 18; i++) {
+        if (p.scores[i] == null) continue;
+        gross += Scoring.cappedGross(liveRound, p, i);
+      }
       const holesPlayed = scored.length;
       const color = amt > 0 ? 'var(--green-light)' : amt < 0 ? 'var(--team-b)' : 'var(--muted)';
       return h('div', { class: `player-card team-${p.team.toLowerCase()}` },
@@ -3581,13 +3610,17 @@ function renderLiveView() {
               })
             );
           }).filter(Boolean),
-          // Totals row
+          // Totals row (capped gross — matches reported values)
           h('tr', { style: 'font-weight:700;background:var(--bg);' },
             h('td', null, ''),
             h('td', null, ''),
             ...allPlayers.map(p => {
-              const scored = p.scores.filter(s => s != null);
-              return h('td', null, String(scored.reduce((a, b) => a + b, 0)));
+              let total = 0;
+              for (let i = 0; i < 18; i++) {
+                if (p.scores[i] == null) continue;
+                total += Scoring.cappedGross(liveRound, p, i);
+              }
+              return h('td', null, String(total));
             })
           )
         )
