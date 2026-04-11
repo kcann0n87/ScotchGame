@@ -3398,6 +3398,8 @@ function ensureDraft() {
         if (myLatest && state.authProfile) {
           state.authProfile.handicap = myLatest.handicap;
         }
+        // Trigger a re-render so new-round player pickers see the loaded list
+        if (state.screen === 'newRound') render(true);
       }).catch(() => {});
     }
     // Pre-fill Player 1 with the logged-in user's profile
@@ -3639,9 +3641,15 @@ function renderNewRound() {
         const alreadyLinked = new Set(newRoundDraft.players.filter((x, xi) => xi !== i && x.userId).map(x => x.userId));
         let suggestions = [];
         if (isCloud && nameVal.length >= 1 && !p.userId && state._allProfiles) {
+          const q = nameVal.toLowerCase();
           suggestions = state._allProfiles
-            .filter(pr => pr.display_name.toLowerCase().includes(nameVal.toLowerCase()) && !alreadyLinked.has(pr.id))
-            .slice(0, 5);
+            .filter(pr => {
+              if (alreadyLinked.has(pr.id)) return false;
+              const dn = (pr.display_name || '').toLowerCase();
+              const em = (pr.email || '').toLowerCase();
+              return dn.includes(q) || em.includes(q);
+            })
+            .slice(0, 8);
         }
         // Load all profiles once for autocomplete
         if (isCloud && !state._allProfiles && !state._profilesLoading) {
@@ -3666,6 +3674,7 @@ function renderNewRound() {
                 : h('div', null,
                     h('input', { type: 'text', value: nameVal, placeholder: `Player ${i+1}`,
                       id: `player-name-${i}`,
+                      autocomplete: 'off',
                       oninput: e => {
                         p.name = e.target.value;
                         // Debounce render + restore focus for mobile keyboard
@@ -3675,25 +3684,28 @@ function renderNewRound() {
                           render(true);
                           requestAnimationFrame(() => {
                             const el = document.getElementById(`player-name-${i}`);
-                            if (el) { el.focus(); el.setSelectionRange(pos, pos); }
+                            if (el) { el.focus(); try { el.setSelectionRange(pos, pos); } catch (_) {} }
                           });
-                        }, 500);
+                        }, 150);
                       }
                     }),
                     suggestions.length > 0
-                      ? h('div', { style: 'position:absolute;left:0;right:0;top:100%;z-index:50;background:white;border:1px solid var(--border);border-radius:0 0 var(--radius) var(--radius);box-shadow:var(--shadow-md);max-height:200px;overflow-y:auto;' },
-                          ...suggestions.map(s => h('div', {
-                            style: 'padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border-light);font-size:14px;',
-                            onclick: () => {
-                              p.name = s.display_name;
-                              p.userId = s.id;
-                              p.handicap = s.handicap || 0;
-                              render(true);
-                            }
-                          },
-                            h('strong', null, s.display_name),
-                            h('span', { style: 'color:var(--muted);margin-left:8px;font-size:12px;' }, `Hcp ${s.handicap ?? 0}`)
-                          ))
+                      ? h('div', { style: 'position:absolute;left:0;right:0;top:100%;z-index:50;background:white;border:1px solid var(--border);border-radius:0 0 var(--radius) var(--radius);box-shadow:var(--shadow-md);max-height:240px;overflow-y:auto;' },
+                          ...suggestions.map(s => {
+                            const label = s.display_name || s.email || '(no name)';
+                            return h('div', {
+                              style: 'padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border-light);font-size:14px;',
+                              onclick: () => {
+                                p.name = label;
+                                p.userId = s.id;
+                                p.handicap = s.handicap || 0;
+                                render(true);
+                              }
+                            },
+                              h('strong', null, label),
+                              h('span', { style: 'color:var(--muted);margin-left:8px;font-size:12px;' }, `Hcp ${s.handicap ?? 0}`)
+                            );
+                          })
                         )
                       : null
                   )
@@ -6453,15 +6465,18 @@ function renderPlayerPickerModal() {
             // Show all players
             state.playerPickerResults && state.playerPickerResults.length > 0
               ? h('div', null,
-                  ...state.playerPickerResults.map(u => h('div', { class: 'list-item',
-                    onclick: () => apply({ name: u.display_name, userId: u.id, invitedEmail: null, handicap: u.handicap || 0 })
-                  },
-                    h('div', null,
-                      h('div', { class: 'main' }, u.display_name),
-                      h('div', { class: 'sub' }, `Hcp ${u.handicap ?? 0}`)
-                    ),
-                    h('span', { class: 'tag a' }, 'Link')
-                  ))
+                  ...state.playerPickerResults.map(u => {
+                    const label = u.display_name || u.email || '(no name)';
+                    return h('div', { class: 'list-item',
+                      onclick: () => apply({ name: label, userId: u.id, invitedEmail: null, handicap: u.handicap || 0 })
+                    },
+                      h('div', null,
+                        h('div', { class: 'main' }, label),
+                        h('div', { class: 'sub' }, `Hcp ${u.handicap ?? 0}${u.email && u.display_name ? ' · ' + u.email : ''}`)
+                      ),
+                      h('span', { class: 'tag a' }, 'Link')
+                    );
+                  })
                 )
               : (state._pickerAutoLoaded ? h('div', { style: 'color:var(--muted);padding:12px;text-align:center;' }, 'No players found.') : null)
           )
