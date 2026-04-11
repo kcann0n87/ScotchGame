@@ -439,6 +439,14 @@ const SupabaseClient = (() => {
     if (typeof isPublic === 'boolean') patch.is_public = isPublic;
     await _client.from('live_shares').update(patch).eq('code', code);
   }
+  // Called when the scorer ends their round — removes the live share so it
+  // stops appearing in the public Live Now list on other devices.
+  async function endLiveShare(code) {
+    if (!_client || !code) return;
+    try {
+      await _client.from('live_shares').delete().eq('code', code);
+    } catch (e) { console.warn('endLiveShare failed:', e); }
+  }
   async function listPublicLiveGames() {
     if (!_client) return [];
     // Only games updated in the last 8 hours count as "in progress"
@@ -533,6 +541,7 @@ const SupabaseClient = (() => {
     // live share
     createLiveShare,
     updateLiveShare,
+    endLiveShare,
     subscribeToLiveShare,
     subscribeLiveChat,
     listPublicLiveGames

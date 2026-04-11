@@ -2619,6 +2619,14 @@ const SupabaseClient = (() => {
     if (typeof isPublic === 'boolean') patch.is_public = isPublic;
     await _client.from('live_shares').update(patch).eq('code', code);
   }
+  // Called when the scorer ends their round — removes the live share so it
+  // stops appearing in the public Live Now list on other devices.
+  async function endLiveShare(code) {
+    if (!_client || !code) return;
+    try {
+      await _client.from('live_shares').delete().eq('code', code);
+    } catch (e) { console.warn('endLiveShare failed:', e); }
+  }
   async function listPublicLiveGames() {
     if (!_client) return [];
     // Only games updated in the last 8 hours count as "in progress"
@@ -2713,6 +2721,7 @@ const SupabaseClient = (() => {
     // live share
     createLiveShare,
     updateLiveShare,
+    endLiveShare,
     subscribeToLiveShare,
     subscribeLiveChat,
     listPublicLiveGames
@@ -3786,8 +3795,15 @@ function renderNewRound() {
                       : null
                   )
             ),
+          h('div', { class: 'field', style: 'margin-top:6px;' },
+            h('label', null, 'Team'),
+            h('select', { style: 'width:100%;', onchange: e => { p.team = e.target.value; render(); } },
+              h('option', { value: 'A', ...(p.team === 'A' ? { selected: 'selected' } : {}) }, 'Team A'),
+              h('option', { value: 'B', ...(p.team === 'B' ? { selected: 'selected' } : {}) }, 'Team B')
+            )
+          ),
           h('div', { class: 'field-row' },
-            h('div', { class: 'field', style: 'flex:0 0 70px;' },
+            h('div', { class: 'field', style: 'flex:0 0 90px;' },
               h('label', null, 'Handicap'),
               h('input', { type: 'number', value: p.handicap === '' || p.handicap == null ? '' : p.handicap,
                 min: -10, max: 54, placeholder: '0',
@@ -3797,13 +3813,6 @@ function renderNewRound() {
                 } })
             ),
             h('div', { class: 'field', style: 'flex:1;min-width:0;' },
-              h('label', null, 'Team'),
-              h('select', { style: 'width:100%;', onchange: e => { p.team = e.target.value; render(); } },
-                h('option', { value: 'A', ...(p.team === 'A' ? { selected: 'selected' } : {}) }, 'Team A'),
-                h('option', { value: 'B', ...(p.team === 'B' ? { selected: 'selected' } : {}) }, 'Team B')
-              )
-            ),
-            h('div', { class: 'field', style: 'flex:1.3;min-width:0;' },
               h('label', null, 'Stake'),
               h('select', { style: 'width:100%;', onchange: e => { p.stake = e.target.value; } },
                 h('option', { value: 'full', ...(p.stake === 'full' ? { selected: 'selected' } : {}) }, 'Full ($100)'),
@@ -4067,23 +4076,7 @@ function renderIndyFormat() {
               render();
             }
           }, '2-Down Auto', h('br'), h('span', { style: 'font-size:10px;' }, 'Auto-press every 2 strokes down'))
-        ),
-        entry.format === 'auto2down'
-          ? h('div', { style: 'margin-top:10px;' },
-              h('div', { style: 'font-size:11px;color:var(--muted);margin-bottom:4px;' },
-                'Back 9 worth double? (Base back-9 bet pays 2×. New auto-presses still pay 1×.)'),
-              h('div', { class: 'toggle-group' },
-                h('div', {
-                  class: `toggle ${!entry.backDouble ? 'active' : ''}`,
-                  onclick: () => { entry.backDouble = false; save(); render(); }
-                }, 'Normal'),
-                h('div', {
-                  class: `toggle ${entry.backDouble ? 'active' : ''}`,
-                  onclick: () => { entry.backDouble = true; save(); render(); }
-                }, 'Back Doubled')
-              )
-            )
-          : null
+        )
       ));
     }
   }
@@ -4402,8 +4395,8 @@ function renderRound() {
 
   // Turn prompt: for each indy pairing, ask for back-9-bet choice when starting second nine
   // front-first: shows on H10 (hIdx === 9); back-first: shows on H1 (hIdx === 0)
-  // Only 3-Way matches need the turn prompt — auto-press matches spawn presses
-  // automatically and are filtered out inside buildIndyBackPrompts.
+  // 3-Way matches get a press/no-press choice; auto2down matches get a
+  // Back-Doubled toggle (replaces the old pre-round sub-option).
   const turnHoleIdx = r.startNine === 'back' ? 0 : 9;
   if (hIdx === turnHoleIdx) {
     const prompts = buildIndyBackPrompts(r);
@@ -4413,6 +4406,27 @@ function renderRound() {
         h('div', { style: 'font-size:12px;color:var(--muted);margin-bottom:10px;' },
           'Set the back-9 choice for each individual match.'),
         ...prompts.map(pr => {
+          if (pr.format === 'auto2down') {
+            const entry = r.indyMatchFormats[pr.key];
+            return h('div', { style: 'padding:10px;background:var(--bg);border-radius:8px;margin-bottom:8px;' },
+              h('div', { style: 'font-size:13px;font-weight:700;margin-bottom:6px;' },
+                `${pr.aName} vs ${pr.bName}`,
+                h('span', { style: 'font-size:11px;color:var(--muted);margin-left:8px;font-weight:500;' }, '2-Down Auto')
+              ),
+              h('div', { style: 'font-size:11px;color:var(--muted);margin-bottom:6px;' },
+                'Back 9 worth double? (Base back-9 bet pays 2×. New auto-presses still pay 1×.)'),
+              h('div', { class: 'toggle-group' },
+                h('div', {
+                  class: `toggle ${!entry.backDouble ? 'active' : ''}`,
+                  onclick: () => { entry.backDouble = false; save(); render(true); }
+                }, 'Normal'),
+                h('div', {
+                  class: `toggle ${entry.backDouble ? 'active' : ''}`,
+                  onclick: () => { entry.backDouble = true; save(); render(true); }
+                }, 'Back Doubled')
+              )
+            );
+          }
           const currentChoice = r.indyBackChoice[pr.key] || 'none';
           const choices = pr.state === 'tied'
             ? [
@@ -5110,8 +5124,14 @@ function renderSummary() {
         }
       }}, r.cloudSavedId === 'pending' ? 'Submitting...' : '✓ Submit for Review');
     })(),
-    h('button', { class: 'btn danger', style: 'margin-top:10px;', onclick: () => {
+    h('button', { class: 'btn danger', style: 'margin-top:10px;', onclick: async () => {
       if (confirm('End round and clear?')) {
+        // Tear down the live share first so spectators' Live Now list clears.
+        if (state.liveShareCode && typeof SupabaseClient !== 'undefined' && SupabaseClient.isConfigured()) {
+          try { await SupabaseClient.endLiveShare(state.liveShareCode); } catch (e) {}
+        }
+        state.liveShareCode = null;
+        state.liveShareUrl = null;
         state.round = null;
         state.currentHoleIdx = 0;
         state.screen = 'home';
@@ -5203,6 +5223,8 @@ function renderPerHoleAllGames(pts, round, label) {
 }
 
 // For each A×B indy pairing, check front-9 state and whether a back-9 prompt is needed.
+// Returns prompts for BOTH 3-way matches (press/no-press choice) and auto2down
+// matches (back-9 doubled toggle). The mid-round UI renders them differently.
 function buildIndyBackPrompts(round) {
   const prompts = [];
   // Determine the "first nine" in play order — that's what we check for scoring complete.
@@ -5214,25 +5236,34 @@ function buildIndyBackPrompts(round) {
     for (const pb of round.teamB) {
       const k = Scoring.indyKey(pa.id, pb.id);
       const entry = formats[k] || { format: '3way' };
-      // Auto-press matches handle their own presses; no turn prompt needed.
-      if (entry.format === 'auto2down') continue;
       const firstNineDone = firstNineIdxs.every(i => pa.scores[i] != null && pb.scores[i] != null);
       if (!firstNineDone) continue;
-      const match = Scoring.computeIndyMatch(round, pa, pb);
-      // "front diff" in this context = diff after the FIRST nine played
-      const diff = round.startNine === 'back' ? match.backDiff : match.frontDiff;
-      const state = diff === 0 ? 'tied' : 'decided';
-      const leaderName = diff > 0 ? pa.name : diff < 0 ? pb.name : null;
-      const trailingName = diff > 0 ? pb.name : diff < 0 ? pa.name : null;
-      prompts.push({
-        key: Scoring.indyKey(pa.id, pb.id),
-        aName: pa.name,
-        bName: pb.name,
-        state,
-        frontDiff: diff,
-        leaderName,
-        trailingName
-      });
+      if (entry.format === 'auto2down') {
+        prompts.push({
+          key: k,
+          format: 'auto2down',
+          aName: pa.name,
+          bName: pb.name,
+          backDouble: !!entry.backDouble
+        });
+      } else {
+        const match = Scoring.computeIndyMatch(round, pa, pb);
+        // "front diff" in this context = diff after the FIRST nine played
+        const diff = round.startNine === 'back' ? match.backDiff : match.frontDiff;
+        const state = diff === 0 ? 'tied' : 'decided';
+        const leaderName = diff > 0 ? pa.name : diff < 0 ? pb.name : null;
+        const trailingName = diff > 0 ? pb.name : diff < 0 ? pa.name : null;
+        prompts.push({
+          key: k,
+          format: '3way',
+          aName: pa.name,
+          bName: pb.name,
+          state,
+          frontDiff: diff,
+          leaderName,
+          trailingName
+        });
+      }
     }
   }
   return prompts;
