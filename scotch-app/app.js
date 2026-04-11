@@ -1968,6 +1968,10 @@ function renderScoreRow(player, hIdx, round, team) {
   const si = round.course.holes[hIdx].si;
   const strokes = Scoring.strokesOnHole(round.baseStrokes[player.id] || 0, si);
   const val = player.scores[hIdx];
+  const isXVal = val === 'X' || val === 'x';
+  const valStyle = val == null
+    ? 'color:var(--muted);'
+    : (isXVal ? 'color:var(--team-b);font-weight:900;' : '');
   return h('div', { class: 'score-grid' },
     h('div', null,
       h('div', { class: 'pname' }, player.name),
@@ -1979,25 +1983,49 @@ function renderScoreRow(player, hIdx, round, team) {
     h('div', { class: 'stepper' },
       h('button', { onclick: () => {
         const par = round.course.holes[hIdx].par;
-        if (player.scores[hIdx] == null) {
+        const cur = player.scores[hIdx];
+        if (cur == null) {
           // First tap down = birdie
           player.scores[hIdx] = par - 1;
+        } else if (cur === 'X' || cur === 'x') {
+          // Back out of X → triple bogey
+          player.scores[hIdx] = par + 3;
         } else {
-          player.scores[hIdx] = Math.max(1, player.scores[hIdx] - 1);
+          player.scores[hIdx] = Math.max(1, cur - 1);
         }
         render(true);
       }}, '−'),
-      h('div', { class: 'val', style: val == null ? 'color:var(--muted);' : '' }, val == null ? '–' : String(val)),
+      h('div', { class: 'val', style: valStyle }, val == null ? '–' : (isXVal ? 'X' : String(val))),
       h('button', { onclick: () => {
         const par = round.course.holes[hIdx].par;
-        if (player.scores[hIdx] == null) {
+        const cur = player.scores[hIdx];
+        if (cur == null) {
           // First tap up = par
           player.scores[hIdx] = par;
+        } else if (cur === 'X' || cur === 'x') {
+          // Already X — stay X (max)
+          return;
+        } else if (cur === par + 3) {
+          // After triple bogey → X (did not finish)
+          player.scores[hIdx] = 'X';
         } else {
-          player.scores[hIdx] = player.scores[hIdx] + 1;
+          player.scores[hIdx] = cur + 1;
         }
         render(true);
-      }}, '+')
+      }}, '+'),
+      h('button', {
+        class: 'x-btn',
+        style: `margin-left:6px;padding:0 10px;font-size:13px;font-weight:800;background:${isXVal ? 'var(--team-b)' : 'var(--bg)'};color:${isXVal ? 'white' : 'var(--team-b)'};border:1px solid var(--team-b);border-radius:8px;`,
+        onclick: () => {
+          if (isXVal) {
+            // Toggle X off → clear to null
+            player.scores[hIdx] = null;
+          } else {
+            player.scores[hIdx] = 'X';
+          }
+          render(true);
+        }
+      }, 'X')
     )
   );
 }
@@ -2248,7 +2276,7 @@ function renderSummary() {
   root.appendChild(h('div', { class: 'card' },
     h('h2', null, 'Player Scores'),
     h('div', { style: 'font-size:11px;color:var(--muted);margin-bottom:6px;' },
-      'Gross is capped at Net Double Bogey (par + 2 + strokes received). Any hole above the cap is adjusted down.'),
+      'Gross shown is what was entered. Reported total (sent to admin / copy-to-text) caps each hole at Net Double Bogey and converts any X to net double.'),
     h('table', { class: 'totals-table' },
       h('thead', null,
         h('tr', null,
@@ -2260,32 +2288,41 @@ function renderSummary() {
       ),
       h('tbody', null,
         ...allPlayers.map(p => {
-          let gross = 0;
-          let netTotal = 0;
-          let adjHoles = 0;
-          let adjStrokes = 0;
+          let grossRaw = 0;
+          let netRaw = 0;
+          let grossReported = 0;
+          let hasAdj = false;
           for (let i = 0; i < 18; i++) {
-            if (p.scores[i] == null) continue;
-            const cap = Scoring.cappedGross(r, p, i);
             const raw = p.scores[i];
-            if (cap < raw) { adjHoles++; adjStrokes += (raw - cap); }
-            gross += cap;
+            if (raw == null || raw === '') continue;
+            const cap = Scoring.cappedGross(r, p, i);
             const si = r.course.holes[i].si;
-            netTotal += cap - Scoring.strokesOnHole(r.baseStrokes[p.id] || 0, si);
+            const strokes = Scoring.strokesOnHole(r.baseStrokes[p.id] || 0, si);
+            if (raw === 'X' || raw === 'x') {
+              // No numeric raw value — count the cap in both totals.
+              grossRaw += cap;
+              netRaw += cap - strokes;
+              hasAdj = true;
+            } else {
+              grossRaw += raw;
+              netRaw += raw - strokes;
+              if (cap < raw) hasAdj = true;
+            }
+            grossReported += cap;
           }
           const amt = adjustedPerPlayer[p.id] || 0;
           const cls = amt > 0 ? 'team-a' : amt < 0 ? 'team-b' : '';
           const txt = amt === 0 ? '$0' : (amt > 0 ? `+$${amt}` : `−$${Math.abs(amt)}`);
-          const grossCell = adjHoles > 0
+          const grossCell = hasAdj
             ? h('td', null,
-                String(gross),
+                String(grossRaw),
                 h('span', { style: 'font-size:10px;color:var(--muted);margin-left:4px;' },
-                  `(−${adjStrokes} cap)`))
-            : h('td', null, String(gross));
+                  `(rep ${grossReported})`))
+            : h('td', null, String(grossRaw));
           return h('tr', null,
             h('td', { style: 'font-weight:600;font-size:13px;' }, p.name),
             grossCell,
-            h('td', null, String(netTotal)),
+            h('td', null, String(netRaw)),
             h('td', { class: cls, style: 'font-weight:700;' }, txt)
           );
         })
@@ -2320,7 +2357,11 @@ function renderSummary() {
         try {
           r.cloudSavedId = 'pending';
           render(true);
-          const row = await SupabaseClient.saveRound(r, { ...settlement, perPlayer: adjustedPerPlayer });
+          // Send a "reporting" clone with scores capped at net-double-bogey
+          // (and any X converted to net-double) so the admin sees pure numeric
+          // values and downstream handicap calc has real numbers to work with.
+          const reportingRound = Scoring.toReportingRound(r);
+          const row = await SupabaseClient.saveRound(reportingRound, { ...settlement, perPlayer: adjustedPerPlayer });
           if (row) {
             r.cloudSavedId = row.id;
             historyCache = null;
@@ -2368,10 +2409,11 @@ function buildCopyText(round, result, settlement, adjustedPerPlayer) {
   const allPlayers = [...round.teamA, ...round.teamB];
   for (const p of allPlayers) {
     // Report capped gross (net-double-bogey) so the reported number matches
-    // whatever the bet scoring used.
+    // whatever the bet scoring used. X holes → net double bogey.
     let gross = 0;
     for (let i = 0; i < 18; i++) {
-      if (p.scores[i] == null) continue;
+      const raw = p.scores[i];
+      if (raw == null || raw === '') continue;
       gross += Scoring.cappedGross(round, p, i);
     }
     const amt = adjustedPerPlayer[p.id] || 0;
@@ -3573,12 +3615,16 @@ function renderLiveView() {
     h('h2', null, 'Players'),
     ...allPlayers.map(p => {
       const amt = settlement.perPlayer?.[p.id] || 0;
-      const scored = p.scores.filter(s => s != null);
-      // Report capped gross (net-double-bogey) — matches the bet scoring.
+      const scored = p.scores.filter(s => s != null && s !== '');
+      // Display raw gross — what the player actually entered. For X holes
+      // (did-not-finish) fall back to the net-double-bogey cap since there's
+      // no numeric raw value to sum.
       let gross = 0;
       for (let i = 0; i < 18; i++) {
-        if (p.scores[i] == null) continue;
-        gross += Scoring.cappedGross(liveRound, p, i);
+        const raw = p.scores[i];
+        if (raw == null || raw === '') continue;
+        if (raw === 'X' || raw === 'x') gross += Scoring.cappedGross(liveRound, p, i);
+        else gross += raw;
       }
       const holesPlayed = scored.length;
       const color = amt > 0 ? 'var(--green-light)' : amt < 0 ? 'var(--team-b)' : 'var(--muted)';
@@ -3615,6 +3661,9 @@ function renderLiveView() {
               ...allPlayers.map(p => {
                 const s = p.scores[i];
                 if (s == null) return h('td', { style: 'color:var(--muted);' }, '–');
+                if (s === 'X' || s === 'x') {
+                  return h('td', { style: 'color:var(--team-b);font-weight:900;' }, 'X');
+                }
                 const diff = s - par;
                 const color = diff < 0 ? 'var(--team-a)' : diff > 0 ? 'var(--team-b)' : '';
                 const weight = diff !== 0 ? 'font-weight:700;' : '';
@@ -3622,15 +3671,17 @@ function renderLiveView() {
               })
             );
           }).filter(Boolean),
-          // Totals row (capped gross — matches reported values)
+          // Totals row (raw gross — what was entered; X holes use the net-dbl cap)
           h('tr', { style: 'font-weight:700;background:var(--bg);' },
             h('td', null, ''),
             h('td', null, ''),
             ...allPlayers.map(p => {
               let total = 0;
               for (let i = 0; i < 18; i++) {
-                if (p.scores[i] == null) continue;
-                total += Scoring.cappedGross(liveRound, p, i);
+                const raw = p.scores[i];
+                if (raw == null || raw === '') continue;
+                if (raw === 'X' || raw === 'x') total += Scoring.cappedGross(liveRound, p, i);
+                else total += raw;
               }
               return h('td', null, String(total));
             })

@@ -25,6 +25,11 @@ const Scoring = (() => {
   // gets adjusted down. We use this cap everywhere scores feed the game
   // (middle / top / bottom / indy matches) and also when we report the player's
   // gross totals so the reported number always matches what the bet used.
+  //
+  // Special value: 'X' means the player did not finish the hole (picked up).
+  // For scoring / reporting purposes it is treated as net double bogey.
+  function isX(s) { return s === 'X' || s === 'x'; }
+
   function cappedGross(round, player, holeIdx) {
     const g = player.scores[holeIdx];
     if (g == null || g === '') return null;
@@ -32,7 +37,32 @@ const Scoring = (() => {
     const si  = playerSI(round, player, holeIdx);
     const strokes = strokesOnHole(round.baseStrokes[player.id] || 0, si);
     const cap = par + 2 + strokes;
+    if (isX(g)) return cap; // did not finish → net double bogey
     return Math.min(g, cap);
+  }
+
+  // Deep-clone a round with all scores "normalised" for reporting:
+  //   - any numeric gross above the cap is replaced with the cap value
+  //   - any 'X' is replaced with net double bogey for that hole
+  // Used when copying to text and when saving to Supabase so every downstream
+  // consumer sees pure numeric scores.
+  function toReportingRound(round) {
+    const clone = JSON.parse(JSON.stringify(round));
+    const allPlayers = [...(clone.teamA || []), ...(clone.teamB || [])];
+    for (const p of allPlayers) {
+      if (!Array.isArray(p.scores)) continue;
+      for (let i = 0; i < p.scores.length; i++) {
+        const g = p.scores[i];
+        if (g == null || g === '') continue;
+        const par = clone.course.holes[i].par;
+        const si  = playerSI(clone, p, i);
+        const strokes = strokesOnHole(clone.baseStrokes[p.id] || 0, si);
+        const cap = par + 2 + strokes;
+        if (isX(g)) p.scores[i] = cap;
+        else if (typeof g === 'number' && g > cap) p.scores[i] = cap;
+      }
+    }
+    return clone;
   }
 
   // ---------- Individual Net Nassau (front/back/total) ----------
@@ -50,11 +80,29 @@ const Scoring = (() => {
     let frontA = 0, frontB = 0, backA = 0, backB = 0;
     let anyFront = false, anyBack = false;
     for (let h = 0; h < 18; h++) {
-      const gA = cappedGross(round, playerA, h);
-      const gB = cappedGross(round, playerB, h);
-      if (gA == null || gB == null) continue;
-      const netA = gA - strokesOnHole(strokesA, playerSI(round, playerA, h));
-      const netB = gB - strokesOnHole(strokesB, playerSI(round, playerB, h));
+      const rawA = playerA.scores[h];
+      const rawB = playerB.scores[h];
+      if (rawA == null || rawA === '' || rawB == null || rawB === '') continue;
+      const xA = isX(rawA), xB = isX(rawB);
+      let netA, netB;
+      if (xA && xB) {
+        // Both picked up — tie the hole.
+        netA = 0; netB = 0;
+      } else if (xA) {
+        // A didn't finish → A auto-loses the hole (1 net stroke worse than B).
+        const gB = cappedGross(round, playerB, h);
+        netB = gB - strokesOnHole(strokesB, playerSI(round, playerB, h));
+        netA = netB + 1;
+      } else if (xB) {
+        const gA = cappedGross(round, playerA, h);
+        netA = gA - strokesOnHole(strokesA, playerSI(round, playerA, h));
+        netB = netA + 1;
+      } else {
+        const gA = cappedGross(round, playerA, h);
+        const gB = cappedGross(round, playerB, h);
+        netA = gA - strokesOnHole(strokesA, playerSI(round, playerA, h));
+        netB = gB - strokesOnHole(strokesB, playerSI(round, playerB, h));
+      }
       if (h < 9) { frontA += netA; frontB += netB; anyFront = true; }
       else { backA += netA; backB += netB; anyBack = true; }
     }
@@ -81,11 +129,26 @@ const Scoring = (() => {
     // Per-hole diff: netB - netA  (positive = A ahead on this hole)
     const holeDiffs = [];
     for (let h = 0; h < 18; h++) {
-      const gA = cappedGross(round, playerA, h);
-      const gB = cappedGross(round, playerB, h);
-      if (gA == null || gB == null) { holeDiffs.push(null); continue; }
-      const netA = gA - strokesOnHole(strokesA, playerSI(round, playerA, h));
-      const netB = gB - strokesOnHole(strokesB, playerSI(round, playerB, h));
+      const rawA = playerA.scores[h];
+      const rawB = playerB.scores[h];
+      if (rawA == null || rawA === '' || rawB == null || rawB === '') { holeDiffs.push(null); continue; }
+      const xA = isX(rawA), xB = isX(rawB);
+      let netA, netB;
+      if (xA && xB) { netA = 0; netB = 0; }
+      else if (xA) {
+        const gB = cappedGross(round, playerB, h);
+        netB = gB - strokesOnHole(strokesB, playerSI(round, playerB, h));
+        netA = netB + 1; // A auto-loses this hole
+      } else if (xB) {
+        const gA = cappedGross(round, playerA, h);
+        netA = gA - strokesOnHole(strokesA, playerSI(round, playerA, h));
+        netB = netA + 1;
+      } else {
+        const gA = cappedGross(round, playerA, h);
+        const gB = cappedGross(round, playerB, h);
+        netA = gA - strokesOnHole(strokesA, playerSI(round, playerA, h));
+        netB = gB - strokesOnHole(strokesB, playerSI(round, playerB, h));
+      }
       holeDiffs.push(netB - netA);
     }
 
@@ -222,6 +285,13 @@ const Scoring = (() => {
     const aTot = teamTotalNet(round.teamA, holeIdx, round.course, round.baseStrokes, round);
     const bTot = teamTotalNet(round.teamB, holeIdx, round.course, round.baseStrokes, round);
     if (aTot == null || bTot == null) return null;
+    // X (did not finish) is an automatic loss of TOTAL-ball for that team.
+    // Low ball and birdie are unaffected (the partner can still win those).
+    const aHasX = round.teamA.some(p => isX(p.scores[holeIdx]));
+    const bHasX = round.teamB.some(p => isX(p.scores[holeIdx]));
+    if (aHasX && bHasX) return 'T';
+    if (aHasX) return 'B';
+    if (bHasX) return 'A';
     if (aTot < bTot) return 'A';
     if (bTot < aTot) return 'B';
     return 'T';
@@ -235,7 +305,11 @@ const Scoring = (() => {
   // obvious.)
   function teamHasBirdie(teamPlayers, holeIdx, course) {
     const par = course.holes[holeIdx].par;
-    return teamPlayers.some(p => p.scores[holeIdx] != null && p.scores[holeIdx] <= par - 1);
+    return teamPlayers.some(p => {
+      const s = p.scores[holeIdx];
+      if (s == null || s === '' || isX(s)) return false; // X is never a birdie
+      return s <= par - 1;
+    });
   }
 
   // Highest gross score on a team for a hole (used in 9-point high-ball scoring).
@@ -921,6 +995,8 @@ const Scoring = (() => {
     strokesOnHole,
     computeBaseStrokes,
     cappedGross,
+    isX,
+    toReportingRound,
     computeRound,
     computeIndyMatch,
     indyKey,
