@@ -3938,6 +3938,15 @@ async function init() {
   load();
   if (!state.courses || state.courses.length === 0) {
     state.courses = COURSE_PRESETS.map(courseFromPreset);
+  } else {
+    // Auto-import any new presets that aren't in the user's list yet
+    for (const preset of COURSE_PRESETS) {
+      if (!state.courses.some(c => c.name === preset.name)) {
+        state.courses.push(courseFromPreset(preset));
+      }
+    }
+    // Sort alphabetically
+    state.courses.sort((a, b) => a.name.localeCompare(b.name));
   }
   render();
 
