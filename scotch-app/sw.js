@@ -1,4 +1,4 @@
-const CACHE = 'scotch-v16';
+const CACHE = 'scotch-v17';
 const FILES = [
   './',
   './index.html',
