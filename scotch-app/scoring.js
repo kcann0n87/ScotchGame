@@ -573,7 +573,20 @@ const Scoring = (() => {
   // ---------- Bottom game: Net Nassau with auto 2-down presses ----------
   // Same chain rule as top game: each segment can spawn ONE press, then the newest press chains.
   // Front/Back each track their own press chain. Overall (18-hole) does not spawn presses.
+  //
+  // STROKES: the bottom game uses FULL handicap (NOT off-the-low). Every player
+  // gets their full course handicap allocated by SI — even the lowest player.
+  // This means the net-double-bogey cap also rises by the strokes the player
+  // receives on that hole (cap = par + 2 + strokes_received).
   function computeBottomGame(round) {
+    // Build a shadow round whose baseStrokes give every player their full handicap.
+    // compareLow → teamLowNet → cappedGross all read round.baseStrokes, so swapping
+    // it here automatically propagates full-handicap strokes AND the matching cap.
+    const fullStrokes = {};
+    for (const p of round.teamA) fullStrokes[p.id] = p.handicap || 0;
+    for (const p of round.teamB) fullStrokes[p.id] = p.handicap || 0;
+    const bottomRound = Object.assign({}, round, { baseStrokes: fullStrokes });
+
     const frontMain = { startHole: 0, endHole: 8,  name: 'Front',   points: [], spawned: false };
     const backMain  = { startHole: 9, endHole: 17, name: 'Back',    points: [], spawned: false, multiplier: 2 }; // back 9 pays double
     const overall   = { startHole: 0, endHole: 17, name: 'Overall', points: [] };
@@ -581,7 +594,7 @@ const Scoring = (() => {
     const presses = [];
 
     for (let h = 0; h < 18; h++) {
-      const low = compareLow(round, h);
+      const low = compareLow(bottomRound, h);
       if (low == null) continue;
       let aPts = 0, bPts = 0;
       if (low === 'A') aPts = 1;

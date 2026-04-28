@@ -107,6 +107,21 @@ function migrateCourse(course) {
     if (t.rating === undefined) t.rating = null;
     delete t.slope; // not used
   }
+  // Re-sync pars/SI from preset by name match so corrections to preset data
+  // propagate to courses already saved in the user's local state.
+  if (course.name && Array.isArray(COURSE_PRESETS)) {
+    const preset = COURSE_PRESETS.find(p => p.name === course.name);
+    if (preset && Array.isArray(preset.pars) && Array.isArray(preset.si)) {
+      const sameLen = Array.isArray(course.holes) && course.holes.length === preset.pars.length;
+      if (!sameLen) {
+        course.holes = preset.pars.map((par, i) => ({ par, si: preset.si[i] }));
+      } else {
+        for (let i = 0; i < preset.pars.length; i++) {
+          course.holes[i] = { ...(course.holes[i] || {}), par: preset.pars[i], si: preset.si[i] };
+        }
+      }
+    }
+  }
 }
 
 // Look up a tee by name on a course. Returns { name, si } or null.
@@ -231,8 +246,8 @@ const COURSE_PRESETS = [
   },
   {
     name: 'Broken Sound — Old Course',
-    pars: [5,4,3,4,4,5,4,3,4, 4,4,3,4,3,4,5,4,5],
-    si:   [7,1,17,11,9,5,13,15,3, 6,14,16,2,18,4,12,8,10]
+    pars: [5,4,3,4,4,5,4,3,4, 5,4,3,4,3,4,5,4,4],
+    si:   [9,1,15,11,7,5,17,13,3, 8,16,12,4,14,2,18,10,6]
   },
   {
     name: 'The Wanderers Club',
@@ -2851,6 +2866,8 @@ function renderBottomGameCard(pts, round) {
     const frontPresses = pts.bottom.presses.filter(p => p.endHole === 8);
     const backPresses = pts.bottom.presses.filter(p => p.endHole === 17);
     return [
+      h('div', { style: 'font-size:11px;color:var(--muted);margin-bottom:8px;font-style:italic;' },
+        'Strokes: full handicap (every player gets their full course handicap, allocated by SI). NDB cap rises with the strokes received on each hole.'),
       h('div', { class: 'nine-group' },
         h('div', { class: 'nine-label' }, 'Front 9'),
         ...renderChain(frontMain, frontPresses, 'bottom')
