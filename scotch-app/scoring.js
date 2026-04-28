@@ -20,14 +20,16 @@ const Scoring = (() => {
   }
 
   // ---------- Net Double Bogey cap ----------
-  // USGA rule: the maximum gross score for scoring purposes is net double bogey
-  // — par + 2 + handicap strokes received on that hole. Anything above the cap
-  // gets adjusted down. We use this cap everywhere scores feed the game
-  // (middle / top / bottom / indy matches) and also when we report the player's
-  // gross totals so the reported number always matches what the bet used.
+  // USGA rule: the maximum gross score for HANDICAP / REPORTING purposes is
+  // net double bogey — par + 2 + handicap strokes received on that hole.
+  // We only apply this cap to the score we send in (toReportingRound + the
+  // player-scores summary displayed on the settlement screen). In-game
+  // scoring (middle / top / bottom / indy matches) uses the raw entered
+  // score, so a player who shoots a 10 actually loses that hole by 10.
   //
   // Special value: 'X' means the player did not finish the hole (picked up).
-  // For scoring / reporting purposes it is treated as net double bogey.
+  // X has no numeric value, so for any purpose that needs a number we
+  // substitute the net-double-bogey cap.
   function isX(s) { return s === 'X' || s === 'x'; }
 
   function cappedGross(round, player, holeIdx) {
@@ -39,6 +41,22 @@ const Scoring = (() => {
     const cap = par + 2 + strokes;
     if (isX(g)) return cap; // did not finish → net double bogey
     return Math.min(g, cap);
+  }
+
+  // In-game gross: the raw entered score, uncapped. Used by every match /
+  // points calculation so a real 10 plays like a 10. X is the only value
+  // that gets converted (to net-double-bogey) since there is no numeric
+  // value to use otherwise.
+  function inGameGross(round, player, holeIdx) {
+    const g = player.scores[holeIdx];
+    if (g == null || g === '') return null;
+    if (isX(g)) {
+      const par = round.course.holes[holeIdx].par;
+      const si  = playerSI(round, player, holeIdx);
+      const strokes = strokesOnHole(round.baseStrokes[player.id] || 0, si);
+      return par + 2 + strokes;
+    }
+    return g;
   }
 
   // Deep-clone a round with all scores "normalised" for reporting:
@@ -90,16 +108,16 @@ const Scoring = (() => {
         netA = 0; netB = 0;
       } else if (xA) {
         // A didn't finish → A auto-loses the hole (1 net stroke worse than B).
-        const gB = cappedGross(round, playerB, h);
+        const gB = inGameGross(round, playerB, h);
         netB = gB - strokesOnHole(strokesB, playerSI(round, playerB, h));
         netA = netB + 1;
       } else if (xB) {
-        const gA = cappedGross(round, playerA, h);
+        const gA = inGameGross(round, playerA, h);
         netA = gA - strokesOnHole(strokesA, playerSI(round, playerA, h));
         netB = netA + 1;
       } else {
-        const gA = cappedGross(round, playerA, h);
-        const gB = cappedGross(round, playerB, h);
+        const gA = inGameGross(round, playerA, h);
+        const gB = inGameGross(round, playerB, h);
         netA = gA - strokesOnHole(strokesA, playerSI(round, playerA, h));
         netB = gB - strokesOnHole(strokesB, playerSI(round, playerB, h));
       }
@@ -136,16 +154,16 @@ const Scoring = (() => {
       let netA, netB;
       if (xA && xB) { netA = 0; netB = 0; }
       else if (xA) {
-        const gB = cappedGross(round, playerB, h);
+        const gB = inGameGross(round, playerB, h);
         netB = gB - strokesOnHole(strokesB, playerSI(round, playerB, h));
         netA = netB + 1; // A auto-loses this hole
       } else if (xB) {
-        const gA = cappedGross(round, playerA, h);
+        const gA = inGameGross(round, playerA, h);
         netA = gA - strokesOnHole(strokesA, playerSI(round, playerA, h));
         netB = netA + 1;
       } else {
-        const gA = cappedGross(round, playerA, h);
-        const gB = cappedGross(round, playerB, h);
+        const gA = inGameGross(round, playerA, h);
+        const gB = inGameGross(round, playerB, h);
         netA = gA - strokesOnHole(strokesA, playerSI(round, playerA, h));
         netB = gB - strokesOnHole(strokesB, playerSI(round, playerB, h));
       }
@@ -247,12 +265,13 @@ const Scoring = (() => {
   }
 
   // ---------- Team best ball / total net ----------
-  // Both helpers accept an optional `round` argument so they can apply the
-  // net-double-bogey cap via cappedGross. If round is omitted (legacy callers),
-  // the raw gross is used — but all internal callers now pass it.
+  // Both helpers accept an optional `round` so X (did-not-finish) can be
+  // converted to net-double-bogey via inGameGross. Numeric scores are used
+  // raw — no cap — so a real 10 still costs the team 10. If round is
+  // omitted, the raw value is read directly (X handling skipped).
   function teamLowNet(teamPlayers, holeIdx, course, baseStrokes, round) {
     const nets = teamPlayers.map(p => {
-      const g = round ? cappedGross(round, p, holeIdx) : p.scores[holeIdx];
+      const g = round ? inGameGross(round, p, holeIdx) : p.scores[holeIdx];
       if (g == null) return null;
       const si = (p.siArray && p.siArray[holeIdx] != null) ? p.siArray[holeIdx] : course.holes[holeIdx].si;
       return netScore(g, strokesOnHole(baseStrokes[p.id], si));
@@ -263,7 +282,7 @@ const Scoring = (() => {
 
   function teamTotalNet(teamPlayers, holeIdx, course, baseStrokes, round) {
     const nets = teamPlayers.map(p => {
-      const g = round ? cappedGross(round, p, holeIdx) : p.scores[holeIdx];
+      const g = round ? inGameGross(round, p, holeIdx) : p.scores[holeIdx];
       if (g == null) return null;
       const si = (p.siArray && p.siArray[holeIdx] != null) ? p.siArray[holeIdx] : course.holes[holeIdx].si;
       return netScore(g, strokesOnHole(baseStrokes[p.id], si));
@@ -314,11 +333,11 @@ const Scoring = (() => {
 
   // Highest gross score on a team for a hole (used in 9-point high-ball scoring).
   // The team with the LARGER high score LOSES the high-ball point (other team gets 3).
-  // The net-double-bogey cap applies here too — a hack-out 10 is treated as
-  // par + 2 + strokes, which is the reported score.
+  // Uses raw gross — a real hack-out 10 should beat a 9. X (did-not-finish)
+  // is substituted with net-double-bogey since there's no numeric value.
   function teamHighGross(teamPlayers, holeIdx, round) {
     const scores = teamPlayers
-      .map(p => round ? cappedGross(round, p, holeIdx) : p.scores[holeIdx])
+      .map(p => round ? inGameGross(round, p, holeIdx) : p.scores[holeIdx])
       .filter(s => s != null);
     if (scores.length === 0) return null;
     return Math.max(...scores);
@@ -576,12 +595,10 @@ const Scoring = (() => {
   //
   // STROKES: the bottom game uses FULL handicap (NOT off-the-low). Every player
   // gets their full course handicap allocated by SI — even the lowest player.
-  // This means the net-double-bogey cap also rises by the strokes the player
-  // receives on that hole (cap = par + 2 + strokes_received).
   function computeBottomGame(round) {
     // Build a shadow round whose baseStrokes give every player their full handicap.
-    // compareLow → teamLowNet → cappedGross all read round.baseStrokes, so swapping
-    // it here automatically propagates full-handicap strokes AND the matching cap.
+    // compareLow → teamLowNet → inGameGross all read round.baseStrokes, so swapping
+    // it here automatically propagates full-handicap strokes downstream.
     const fullStrokes = {};
     for (const p of round.teamA) fullStrokes[p.id] = p.handicap || 0;
     for (const p of round.teamB) fullStrokes[p.id] = p.handicap || 0;
@@ -1008,6 +1025,7 @@ const Scoring = (() => {
     strokesOnHole,
     computeBaseStrokes,
     cappedGross,
+    inGameGross,
     isX,
     toReportingRound,
     computeRound,
