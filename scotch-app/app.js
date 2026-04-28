@@ -2303,15 +2303,15 @@ function renderSummary() {
   }
 
   // Player scores card (gross + net totals for each player)
-  // Gross reported here is the CAPPED gross (net-double-bogey rule). Any hole
-  // where the raw score exceeded par+2+strokes is shown at the cap value —
-  // which matches what the bet scoring actually used. We also surface how
-  // many holes (and how many total strokes) were adjusted down so the player
-  // can see the raw vs reported difference at a glance.
+  // Gross is the RAW entered score — same number the bet scoring used
+  // (no net-double-bogey cap during play). The "(rep N)" hint shows the
+  // capped total that would be sent to the admin / handicap system, so a
+  // player can see at a glance whether anything got adjusted down on
+  // submission.
   root.appendChild(h('div', { class: 'card' },
     h('h2', null, 'Player Scores'),
     h('div', { style: 'font-size:11px;color:var(--muted);margin-bottom:6px;' },
-      'Gross shown is what was entered. Reported total (sent to admin / copy-to-text) caps each hole at Net Double Bogey and converts any X to net double.'),
+      'Gross shown is what was entered (and what the bets used). Reported total (sent to admin / copy-to-text) caps each hole at Net Double Bogey and converts any X to net double.'),
     h('table', { class: 'totals-table' },
       h('thead', null,
         h('tr', null,
@@ -2599,13 +2599,17 @@ function renderGolfFeesCard(r, allPlayers, hostCredit) {
             value: cur,
             disabled: isHost ? 'true' : undefined,
             style: isHost ? 'opacity:0.5;' : '',
+            // Update + save on every keystroke, but DON'T re-render — that
+            // destroys the input and steals focus mid-type. Re-render on
+            // blur/Enter (onchange) so the host-credit total refreshes once
+            // the user is done typing.
             oninput: e => {
               const v = e.target.value;
               if (v === '') delete r.golfFees[p.id];
               else r.golfFees[p.id] = Number(v) || 0;
               save();
-              render();
-            }
+            },
+            onchange: () => render(true)
           })
         )
       );
