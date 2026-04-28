@@ -2599,13 +2599,17 @@ function renderGolfFeesCard(r, allPlayers, hostCredit) {
             value: cur,
             disabled: isHost ? 'true' : undefined,
             style: isHost ? 'opacity:0.5;' : '',
+            // Update + save on every keystroke, but DON'T re-render — that
+            // destroys the input and steals focus mid-type. Re-render on
+            // blur/Enter (onchange) so the host-credit total refreshes once
+            // the user is done typing.
             oninput: e => {
               const v = e.target.value;
               if (v === '') delete r.golfFees[p.id];
               else r.golfFees[p.id] = Number(v) || 0;
               save();
-              render();
-            }
+            },
+            onchange: () => render(true)
           })
         )
       );
