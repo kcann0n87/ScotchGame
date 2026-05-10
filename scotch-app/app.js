@@ -1114,6 +1114,7 @@ function renderNewRound() {
               h('label', null, 'Stake'),
               h('select', { style: 'width:100%;', onchange: e => { p.stake = e.target.value; } },
                 h('option', { value: 'full', ...(p.stake === 'full' ? { selected: 'selected' } : {}) }, 'Full ($100)'),
+                h('option', { value: '1.5x', ...(p.stake === '1.5x' ? { selected: 'selected' } : {}) }, '1.5× ($150)'),
                 h('option', { value: '1.25x', ...(p.stake === '1.25x' ? { selected: 'selected' } : {}) }, '1.25× ($125)'),
                 h('option', { value: '0.75x', ...(p.stake === '0.75x' ? { selected: 'selected' } : {}) }, '¾ ($75)'),
                 h('option', { value: 'half', ...(p.stake === 'half' ? { selected: 'selected' } : {}) }, 'Half ($50)')
@@ -1374,6 +1375,24 @@ function renderIndyFormat() {
               render();
             }
           }, '2-Down Auto', h('br'), h('span', { style: 'font-size:10px;' }, 'Auto-press every 2 strokes down'))
+        ),
+        // Custom $ override — leave blank to use the lower of the two players' stakes
+        h('div', { style: 'margin-top:10px;display:flex;align-items:center;gap:8px;' },
+          h('label', { style: 'font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;' }, 'Custom $/seg'),
+          h('input', {
+            type: 'number',
+            inputmode: 'numeric',
+            placeholder: 'auto',
+            value: entry.customStake != null ? String(entry.customStake) : '',
+            style: 'flex:0 0 90px;padding:6px;font-size:13px;',
+            onchange: e => {
+              const v = e.target.value.trim();
+              entry.customStake = v === '' ? null : Math.max(0, parseInt(v, 10) || 0);
+              save();
+              render();
+            }
+          }),
+          h('span', { style: 'font-size:11px;color:var(--muted);' }, 'Blank = lower of the two stakes')
         )
       ));
     }
@@ -2218,7 +2237,7 @@ function renderSummary() {
       const sign = amt > 0 ? '+' : amt < 0 ? '−' : '';
       const badges = [];
       if (p.swing) badges.push('SWING');
-      const stakeLabels = { 'full': 'Full', 'half': 'Half', '1.25x': '1.25×', '0.75x': '¾' };
+      const stakeLabels = { 'full': 'Full', 'half': 'Half', '1.5x': '1.5×', '1.25x': '1.25×', '0.75x': '¾' };
       badges.push(stakeLabels[p.stake] || 'Full');
       const isOpen = state.expandedPlayer === p.id;
       return h('div', null,

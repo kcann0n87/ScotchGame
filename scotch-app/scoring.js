@@ -725,12 +725,14 @@ const Scoring = (() => {
   // Individual Nassau: per-pair at lower stake, $100 per segment (full) or $50 (half).
   function stakeFactor(p) {
     if (p.stake === 'half') return 0.5;
+    if (p.stake === '1.5x') return 1.5;
     if (p.stake === '1.25x') return 1.25;
     if (p.stake === '0.75x') return 0.75;
     return 1; // full
   }
   function stakeFor(p) {
     if (p.stake === 'half') return { game: 50, perPoint: 10 };
+    if (p.stake === '1.5x') return { game: 150, perPoint: 30 };
     if (p.stake === '1.25x') return { game: 125, perPoint: 25 };
     if (p.stake === '0.75x') return { game: 75, perPoint: 15 };
     return { game: 100, perPoint: 20 }; // full
@@ -844,10 +846,19 @@ const Scoring = (() => {
 
     for (const pa of round.teamA) {
       for (const pb of round.teamB) {
-        const stake = lowerStake(pa, pb);
-        const stakeLabel = stake.game === 125 ? '1.25×' : stake.game === 100 ? 'full' : stake.game === 75 ? '¾' : 'half';
         const key = indyKey(pa.id, pb.id);
         const entry = formats[key] || { format: '3way', backDouble: false };
+        // If a custom $ amount has been set on the matchup, override the auto-computed
+        // lower stake. Otherwise fall back to the lower of the two players' stakes.
+        let stake, stakeLabel;
+        const custom = Number(entry.customStake);
+        if (custom && custom > 0) {
+          stake = { game: custom, perPoint: Math.round(custom / 5) };
+          stakeLabel = `$${custom}`;
+        } else {
+          stake = lowerStake(pa, pb);
+          stakeLabel = stake.game === 150 ? '1.5×' : stake.game === 125 ? '1.25×' : stake.game === 100 ? 'full' : stake.game === 75 ? '¾' : 'half';
+        }
         const isAuto = entry.format === 'auto2down';
 
         if (isAuto) {
