@@ -6,6 +6,9 @@
 <meta name="theme-color" content="#0a5d2e" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <title>Scotch Golf</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;0,800;1,500;1,700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <style>
 :root {
   /* Greens */
@@ -72,9 +75,9 @@
   --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   --transition: 0.28s cubic-bezier(0.4, 0, 0.2, 1);
 
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", system-ui, sans-serif;
-  --font-mono: "SF Mono", ui-monospace, "Cascadia Mono", Menlo, monospace;
-  --font-display: var(--font-sans);
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, "Cascadia Mono", Menlo, monospace;
+  --font-display: "Playfair Display", "Iowan Old Style", Georgia, "Times New Roman", serif;
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -84,9 +87,12 @@ html, body {
   padding: 0;
   font-family: var(--font-sans);
   background: var(--bg);
+  /* Soft paper texture + two warm highlights. The SVG noise is tiny and keeps the
+     cards from looking printed from a laser printer. */
   background-image:
-    radial-gradient(ellipse at top, rgba(10, 93, 46, 0.04) 0%, transparent 60%),
-    radial-gradient(ellipse at bottom right, rgba(201, 162, 39, 0.04) 0%, transparent 60%);
+    radial-gradient(ellipse at top, rgba(10, 93, 46, 0.045) 0%, transparent 60%),
+    radial-gradient(ellipse at bottom right, rgba(201, 162, 39, 0.05) 0%, transparent 60%),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.42  0 0 0 0 0.4  0 0 0 0 0.35  0 0 0 0.08 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
   background-attachment: fixed;
   color: var(--text);
   font-size: 16px;
@@ -134,21 +140,34 @@ html, body {
   background: radial-gradient(ellipse, rgba(255, 255, 255, 0.07) 0%, transparent 65%);
   pointer-events: none;
 }
+.header::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(201, 162, 39, 0.55) 20%, rgba(201, 162, 39, 0.75) 50%, rgba(201, 162, 39, 0.55) 80%, transparent);
+  pointer-events: none;
+}
 .header h1 {
   margin: 0;
   font-family: var(--font-display);
-  font-size: 22px;
-  font-weight: 800;
-  letter-spacing: 1.5px;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  font-style: italic;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
   position: relative;
+  line-height: 1;
 }
 .header .sub {
-  font-size: 12px;
-  opacity: 0.82;
-  margin-top: 3px;
-  letter-spacing: 0.4px;
-  font-weight: 500;
+  font-size: 11px;
+  opacity: 0.78;
+  margin-top: 5px;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  font-weight: 600;
   position: relative;
 }
 .header-row {
@@ -179,40 +198,45 @@ html, body {
 
 /* ====== CARDS ====== */
 .card {
-  background: var(--card);
+  background:
+    linear-gradient(180deg, rgba(255, 253, 245, 0.6), transparent 60%),
+    var(--card);
   border-radius: var(--radius-lg);
   padding: var(--space-lg);
   margin: var(--space-md);
   box-shadow: var(--shadow-sm);
   border: 1px solid var(--border-light);
   transition: box-shadow var(--transition), transform var(--transition);
+  position: relative;
 }
 .card h2 {
   margin: 0 0 var(--space-md) 0;
   font-family: var(--font-display);
-  font-size: 12px;
+  font-weight: 700;
+  font-size: 20px;
   color: var(--green-dark);
-  text-transform: uppercase;
-  letter-spacing: 1.4px;
-  font-weight: 800;
+  letter-spacing: -0.005em;
+  line-height: 1.1;
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: baseline;
+  gap: 10px;
 }
 .card h2::before {
   content: "";
-  width: 4px;
-  height: 14px;
-  background: linear-gradient(180deg, var(--gold-light), var(--gold));
-  border-radius: var(--radius-xs);
+  width: 18px;
+  height: 2px;
+  background: linear-gradient(90deg, var(--gold), var(--gold-dark));
+  border-radius: 1px;
+  flex: 0 0 auto;
+  transform: translateY(-5px);
 }
 .card h3 {
   margin: var(--space-md) 0 var(--space-sm) 0;
-  font-size: 11px;
+  font-size: 10px;
   color: var(--muted);
   text-transform: uppercase;
-  letter-spacing: 1px;
-  font-weight: 700;
+  letter-spacing: 2px;
+  font-weight: 800;
 }
 
 .card.featured {
@@ -333,8 +357,8 @@ input[type="number"]::-webkit-outer-spin-button {
   transform: translateX(2px);
   border-color: var(--green-light);
 }
-.list-item .main { font-weight: 700; font-size: 15px; }
-.list-item .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.list-item .main { font-weight: 700; font-size: 16px; letter-spacing: -0.01em; }
+.list-item .sub { font-size: 12px; color: var(--muted); margin-top: 3px; letter-spacing: 0.3px; }
 
 /* ====== PLAYER CARDS ====== */
 .player-card {
@@ -371,16 +395,18 @@ input[type="number"]::-webkit-outer-spin-button {
 .player-card:active { transform: scale(0.995); }
 .player-card .info { flex: 1; min-width: 0; }
 .player-card .name {
-  font-weight: 800;
-  font-size: 16px;
-  letter-spacing: -0.2px;
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: -0.015em;
+  line-height: 1.1;
 }
 .player-card .hcp {
   font-size: 12px;
   color: var(--muted);
-  margin-top: 2px;
+  margin-top: 4px;
   line-height: 1.4;
   font-weight: 500;
+  letter-spacing: 0.2px;
 }
 
 /* ====== HOLE VIEW ====== */
@@ -414,12 +440,21 @@ input[type="number"]::-webkit-outer-spin-button {
 }
 .hole-number {
   font-family: var(--font-display);
-  font-size: 72px;
-  font-weight: 900;
+  font-size: 84px;
+  font-weight: 700;
   line-height: 0.9;
   text-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
-  letter-spacing: -2px;
+  letter-spacing: -0.03em;
   position: relative;
+  display: inline-block;
+}
+.hole-number::after {
+  content: "";
+  display: block;
+  width: 44px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold-light), transparent);
+  margin: 6px auto 0;
 }
 .hole-info {
   display: flex;
@@ -510,11 +545,14 @@ input[type="number"]::-webkit-outer-spin-button {
 .stepper .val {
   min-width: 48px;
   text-align: center;
-  font-size: 26px;
-  font-weight: 800;
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 700;
   color: var(--green-dark);
   font-feature-settings: "tnum";
   font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  line-height: 1;
 }
 
 /* ====== TOGGLE GROUP ====== */
@@ -586,23 +624,25 @@ input[type="number"]::-webkit-outer-spin-button {
   border-radius: var(--radius-lg);
   margin-bottom: var(--space-sm);
   border: 1px solid var(--border-light);
+  position: relative;
 }
 .big-stat .label {
   font-size: 10px;
   text-transform: uppercase;
   color: var(--muted);
   font-weight: 800;
-  letter-spacing: 1.2px;
-  margin-bottom: var(--space-xs);
+  letter-spacing: 1.8px;
+  margin-bottom: var(--space-sm);
 }
 .big-stat .val {
   font-family: var(--font-display);
-  font-size: 34px;
-  font-weight: 900;
+  font-size: 40px;
+  font-weight: 700;
   color: var(--green-dark);
   font-feature-settings: "tnum";
   font-variant-numeric: tabular-nums;
-  letter-spacing: -1px;
+  letter-spacing: -0.025em;
+  line-height: 1;
 }
 .big-stat.ahead-a .val { color: var(--team-a); }
 .big-stat.ahead-b .val { color: var(--team-b); }
@@ -888,10 +928,12 @@ input[type="number"]::-webkit-outer-spin-button {
 }
 .big-diff {
   font-family: var(--font-display);
-  font-size: 28px;
-  font-weight: 900;
-  line-height: 1.15;
-  letter-spacing: -0.5px;
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-feature-settings: "tnum";
+  font-variant-numeric: tabular-nums;
 }
 .big-diff .team-a-color { color: var(--team-a); }
 .big-diff .team-b-color { color: var(--team-b); }
@@ -1068,25 +1110,32 @@ input[type="number"]::-webkit-outer-spin-button {
   pointer-events: none;
 }
 .hero-icon {
-  font-size: 64px;
+  font-size: 54px;
   margin-bottom: var(--space-sm);
-  filter: drop-shadow(0 4px 8px rgba(10, 93, 46, 0.2));
+  filter: drop-shadow(0 4px 8px rgba(10, 93, 46, 0.22));
   position: relative;
 }
 .hero-title {
   font-family: var(--font-display);
-  font-size: 22px;
-  font-weight: 900;
+  font-size: 32px;
+  font-weight: 700;
   color: var(--green-dark);
-  letter-spacing: -0.5px;
+  letter-spacing: -0.02em;
   margin-bottom: var(--space-xs);
   position: relative;
+  line-height: 1.05;
+}
+.hero-title em {
+  font-style: italic;
+  color: var(--gold-dark);
 }
 .hero-subtitle {
   color: var(--muted);
   margin-bottom: var(--space-lg);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
   position: relative;
 }
 .hero-card .btn { position: relative; }
@@ -1111,32 +1160,44 @@ input[type="number"]::-webkit-outer-spin-button {
   pointer-events: none;
 }
 .result-banner .label {
-  font-size: 11px;
+  font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 2px;
-  opacity: 0.8;
+  letter-spacing: 3px;
+  opacity: 0.78;
   font-weight: 700;
-  margin-bottom: var(--space-sm);
+  margin-bottom: var(--space-md);
   position: relative;
+}
+.result-banner .label::after {
+  content: "";
+  display: block;
+  width: 32px;
+  height: 1px;
+  background: rgba(201, 162, 39, 0.7);
+  margin: 10px auto 0;
 }
 .result-banner .amount {
   font-family: var(--font-display);
-  font-size: 44px;
-  font-weight: 900;
-  letter-spacing: -1.5px;
-  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+  font-size: 54px;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
   position: relative;
+  line-height: 1;
+  font-feature-settings: "tnum";
+  font-variant-numeric: tabular-nums;
 }
 
 /* ====== PLAYER TOTAL AMOUNT ====== */
 .player-amount {
   font-family: var(--font-display);
-  font-size: 22px;
-  font-weight: 900;
+  font-size: 26px;
+  font-weight: 700;
   font-feature-settings: "tnum";
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.5px;
+  letter-spacing: -0.02em;
   flex: 0 0 auto;
+  line-height: 1;
 }
 .player-amount.positive { color: var(--green-light); }
 .player-amount.negative { color: var(--team-b); }
@@ -1187,14 +1248,16 @@ const Scoring = (() => {
   }
 
   // ---------- Net Double Bogey cap ----------
-  // USGA rule: the maximum gross score for scoring purposes is net double bogey
-  // — par + 2 + handicap strokes received on that hole. Anything above the cap
-  // gets adjusted down. We use this cap everywhere scores feed the game
-  // (middle / top / bottom / indy matches) and also when we report the player's
-  // gross totals so the reported number always matches what the bet used.
+  // USGA rule: the maximum gross score for HANDICAP / REPORTING purposes is
+  // net double bogey — par + 2 + handicap strokes received on that hole.
+  // We only apply this cap to the score we send in (toReportingRound + the
+  // player-scores summary displayed on the settlement screen). In-game
+  // scoring (middle / top / bottom / indy matches) uses the raw entered
+  // score, so a player who shoots a 10 actually loses that hole by 10.
   //
   // Special value: 'X' means the player did not finish the hole (picked up).
-  // For scoring / reporting purposes it is treated as net double bogey.
+  // X has no numeric value, so for any purpose that needs a number we
+  // substitute the net-double-bogey cap.
   function isX(s) { return s === 'X' || s === 'x'; }
 
   function cappedGross(round, player, holeIdx) {
@@ -1206,6 +1269,22 @@ const Scoring = (() => {
     const cap = par + 2 + strokes;
     if (isX(g)) return cap; // did not finish → net double bogey
     return Math.min(g, cap);
+  }
+
+  // In-game gross: the raw entered score, uncapped. Used by every match /
+  // points calculation so a real 10 plays like a 10. X is the only value
+  // that gets converted (to net-double-bogey) since there is no numeric
+  // value to use otherwise.
+  function inGameGross(round, player, holeIdx) {
+    const g = player.scores[holeIdx];
+    if (g == null || g === '') return null;
+    if (isX(g)) {
+      const par = round.course.holes[holeIdx].par;
+      const si  = playerSI(round, player, holeIdx);
+      const strokes = strokesOnHole(round.baseStrokes[player.id] || 0, si);
+      return par + 2 + strokes;
+    }
+    return g;
   }
 
   // Deep-clone a round with all scores "normalised" for reporting:
@@ -1257,16 +1336,16 @@ const Scoring = (() => {
         netA = 0; netB = 0;
       } else if (xA) {
         // A didn't finish → A auto-loses the hole (1 net stroke worse than B).
-        const gB = cappedGross(round, playerB, h);
+        const gB = inGameGross(round, playerB, h);
         netB = gB - strokesOnHole(strokesB, playerSI(round, playerB, h));
         netA = netB + 1;
       } else if (xB) {
-        const gA = cappedGross(round, playerA, h);
+        const gA = inGameGross(round, playerA, h);
         netA = gA - strokesOnHole(strokesA, playerSI(round, playerA, h));
         netB = netA + 1;
       } else {
-        const gA = cappedGross(round, playerA, h);
-        const gB = cappedGross(round, playerB, h);
+        const gA = inGameGross(round, playerA, h);
+        const gB = inGameGross(round, playerB, h);
         netA = gA - strokesOnHole(strokesA, playerSI(round, playerA, h));
         netB = gB - strokesOnHole(strokesB, playerSI(round, playerB, h));
       }
@@ -1303,16 +1382,16 @@ const Scoring = (() => {
       let netA, netB;
       if (xA && xB) { netA = 0; netB = 0; }
       else if (xA) {
-        const gB = cappedGross(round, playerB, h);
+        const gB = inGameGross(round, playerB, h);
         netB = gB - strokesOnHole(strokesB, playerSI(round, playerB, h));
         netA = netB + 1; // A auto-loses this hole
       } else if (xB) {
-        const gA = cappedGross(round, playerA, h);
+        const gA = inGameGross(round, playerA, h);
         netA = gA - strokesOnHole(strokesA, playerSI(round, playerA, h));
         netB = netA + 1;
       } else {
-        const gA = cappedGross(round, playerA, h);
-        const gB = cappedGross(round, playerB, h);
+        const gA = inGameGross(round, playerA, h);
+        const gB = inGameGross(round, playerB, h);
         netA = gA - strokesOnHole(strokesA, playerSI(round, playerA, h));
         netB = gB - strokesOnHole(strokesB, playerSI(round, playerB, h));
       }
@@ -1414,12 +1493,13 @@ const Scoring = (() => {
   }
 
   // ---------- Team best ball / total net ----------
-  // Both helpers accept an optional `round` argument so they can apply the
-  // net-double-bogey cap via cappedGross. If round is omitted (legacy callers),
-  // the raw gross is used — but all internal callers now pass it.
+  // Both helpers accept an optional `round` so X (did-not-finish) can be
+  // converted to net-double-bogey via inGameGross. Numeric scores are used
+  // raw — no cap — so a real 10 still costs the team 10. If round is
+  // omitted, the raw value is read directly (X handling skipped).
   function teamLowNet(teamPlayers, holeIdx, course, baseStrokes, round) {
     const nets = teamPlayers.map(p => {
-      const g = round ? cappedGross(round, p, holeIdx) : p.scores[holeIdx];
+      const g = round ? inGameGross(round, p, holeIdx) : p.scores[holeIdx];
       if (g == null) return null;
       const si = (p.siArray && p.siArray[holeIdx] != null) ? p.siArray[holeIdx] : course.holes[holeIdx].si;
       return netScore(g, strokesOnHole(baseStrokes[p.id], si));
@@ -1430,7 +1510,7 @@ const Scoring = (() => {
 
   function teamTotalNet(teamPlayers, holeIdx, course, baseStrokes, round) {
     const nets = teamPlayers.map(p => {
-      const g = round ? cappedGross(round, p, holeIdx) : p.scores[holeIdx];
+      const g = round ? inGameGross(round, p, holeIdx) : p.scores[holeIdx];
       if (g == null) return null;
       const si = (p.siArray && p.siArray[holeIdx] != null) ? p.siArray[holeIdx] : course.holes[holeIdx].si;
       return netScore(g, strokesOnHole(baseStrokes[p.id], si));
@@ -1481,11 +1561,11 @@ const Scoring = (() => {
 
   // Highest gross score on a team for a hole (used in 9-point high-ball scoring).
   // The team with the LARGER high score LOSES the high-ball point (other team gets 3).
-  // The net-double-bogey cap applies here too — a hack-out 10 is treated as
-  // par + 2 + strokes, which is the reported score.
+  // Uses raw gross — a real hack-out 10 should beat a 9. X (did-not-finish)
+  // is substituted with net-double-bogey since there's no numeric value.
   function teamHighGross(teamPlayers, holeIdx, round) {
     const scores = teamPlayers
-      .map(p => round ? cappedGross(round, p, holeIdx) : p.scores[holeIdx])
+      .map(p => round ? inGameGross(round, p, holeIdx) : p.scores[holeIdx])
       .filter(s => s != null);
     if (scores.length === 0) return null;
     return Math.max(...scores);
@@ -1743,12 +1823,10 @@ const Scoring = (() => {
   //
   // STROKES: the bottom game uses FULL handicap (NOT off-the-low). Every player
   // gets their full course handicap allocated by SI — even the lowest player.
-  // This means the net-double-bogey cap also rises by the strokes the player
-  // receives on that hole (cap = par + 2 + strokes_received).
   function computeBottomGame(round) {
     // Build a shadow round whose baseStrokes give every player their full handicap.
-    // compareLow → teamLowNet → cappedGross all read round.baseStrokes, so swapping
-    // it here automatically propagates full-handicap strokes AND the matching cap.
+    // compareLow → teamLowNet → inGameGross all read round.baseStrokes, so swapping
+    // it here automatically propagates full-handicap strokes downstream.
     const fullStrokes = {};
     for (const p of round.teamA) fullStrokes[p.id] = p.handicap || 0;
     for (const p of round.teamB) fullStrokes[p.id] = p.handicap || 0;
@@ -2186,6 +2264,7 @@ const Scoring = (() => {
     strokesOnHole,
     computeBaseStrokes,
     cappedGross,
+    inGameGross,
     isX,
     toReportingRound,
     computeRound,
@@ -5078,15 +5157,15 @@ function renderSummary() {
   }
 
   // Player scores card (gross + net totals for each player)
-  // Gross reported here is the CAPPED gross (net-double-bogey rule). Any hole
-  // where the raw score exceeded par+2+strokes is shown at the cap value —
-  // which matches what the bet scoring actually used. We also surface how
-  // many holes (and how many total strokes) were adjusted down so the player
-  // can see the raw vs reported difference at a glance.
+  // Gross is the RAW entered score — same number the bet scoring used
+  // (no net-double-bogey cap during play). The "(rep N)" hint shows the
+  // capped total that would be sent to the admin / handicap system, so a
+  // player can see at a glance whether anything got adjusted down on
+  // submission.
   root.appendChild(h('div', { class: 'card' },
     h('h2', null, 'Player Scores'),
     h('div', { style: 'font-size:11px;color:var(--muted);margin-bottom:6px;' },
-      'Gross shown is what was entered. Reported total (sent to admin / copy-to-text) caps each hole at Net Double Bogey and converts any X to net double.'),
+      'Gross shown is what was entered (and what the bets used). Reported total (sent to admin / copy-to-text) caps each hole at Net Double Bogey and converts any X to net double.'),
     h('table', { class: 'totals-table' },
       h('thead', null,
         h('tr', null,
@@ -5374,13 +5453,17 @@ function renderGolfFeesCard(r, allPlayers, hostCredit) {
             value: cur,
             disabled: isHost ? 'true' : undefined,
             style: isHost ? 'opacity:0.5;' : '',
+            // Update + save on every keystroke, but DON'T re-render — that
+            // destroys the input and steals focus mid-type. Re-render on
+            // blur/Enter (onchange) so the host-credit total refreshes once
+            // the user is done typing.
             oninput: e => {
               const v = e.target.value;
               if (v === '') delete r.golfFees[p.id];
               else r.golfFees[p.id] = Number(v) || 0;
               save();
-              render();
-            }
+            },
+            onchange: () => render(true)
           })
         )
       );
